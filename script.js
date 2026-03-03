@@ -5013,8 +5013,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // 离开聊天界面时停止 TTS，避免切到其他页面后继续朗读
-    if (currentActiveScreen && currentActiveScreen.id === 'chat-interface-screen' && screenId !== 'chat-interface-screen') {
+    // 离开聊天界面时停止 TTS，避免切到其他页面后继续朗读（进入语音/视频通话界面不停，否则接通没声）
+    if (currentActiveScreen && currentActiveScreen.id === 'chat-interface-screen' && screenId !== 'chat-interface-screen' && screenId !== 'voice-call-screen' && screenId !== 'video-call-screen') {
       if (typeof stopAllTtsPlayback === 'function') stopAllTtsPlayback();
     }
 
@@ -13389,7 +13389,14 @@ https://xx.com/4.jpg 疑惑`;
 
   async function openChat(chatId) {
     state.activeChatId = chatId;
-    if (typeof stopAllTtsPlayback === 'function') stopAllTtsPlayback();
+    // 打着电话切到别人聊天时只重置语音条 UI，不碰播放器/队列，通话继续有声音
+    if (voiceCallState.isActive || videoCallState.isActive) {
+      document.querySelectorAll('.voice-play-btn').forEach(btn => { btn.textContent = '▶'; });
+      document.querySelectorAll('.voice-message-body .loading-spinner').forEach(el => { el.style.display = 'none'; });
+      document.querySelectorAll('.voice-message-body .voice-play-btn').forEach(btn => { btn.style.display = 'flex'; });
+    } else if (typeof stopAllTtsPlayback === 'function') {
+      stopAllTtsPlayback();
+    }
     const chat = state.chats[chatId];
     if (!chat) return;
 
@@ -52776,8 +52783,8 @@ ${werewolfGameState.discussionLog.map(d => `${d.speaker}: ${d.content}`).join('\
   let currentTtsLoading = false;
   let ttsAbortController = null;
 
-  function stopAllTtsPlayback() {
-    stopTtsQueue();
+  /** 只停聊天语音条播放，不清通话 TTS 队列（打着电话切到别人聊天时用） */
+  function stopChatMessageTtsOnly() {
     if (ttsAbortController) {
       ttsAbortController.abort();
       ttsAbortController = null;
@@ -52797,6 +52804,11 @@ ${werewolfGameState.discussionLog.map(d => `${d.speaker}: ${d.content}`).join('\
     document.querySelectorAll('.voice-play-btn').forEach(btn => { btn.textContent = '▶'; });
     document.querySelectorAll('.voice-message-body .loading-spinner').forEach(el => { el.style.display = 'none'; });
     document.querySelectorAll('.voice-message-body .voice-play-btn').forEach(btn => { btn.style.display = 'flex'; });
+  }
+
+  function stopAllTtsPlayback() {
+    stopTtsQueue();
+    stopChatMessageTtsOnly();
   }
 
   async function processNextTts() {
