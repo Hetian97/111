@@ -368,33 +368,55 @@
   function openMenu() {
     floatingBallState.menuOpen = true;
     
-    // 计算菜单位置
+    // 先临时显示菜单以获取真实尺寸（但保持透明）
+    menuEl.style.visibility = 'hidden';
+    menuEl.style.display = 'block';
+    
     const ballRect = ballEl.getBoundingClientRect();
-    const menuWidth = 200;
-    const menuHeight = menuEl.offsetHeight || 300;
+    const menuWidth = menuEl.offsetWidth || 200;
+    const menuHeight = menuEl.offsetHeight;
+    
+    // 恢复显示状态
+    menuEl.style.visibility = '';
+    menuEl.style.display = '';
+    
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const padding = 10;
     
     let left, top;
     
-    // 根据悬浮球位置决定菜单展开方向
-    if (ballRect.left < window.innerWidth / 2) {
-      // 靠左，向右展开
-      left = ballRect.right + 10;
+    // 计算水平位置
+    if (ballRect.left < viewportWidth / 2) {
+      // 悬浮球在左侧，菜单向右展开
+      left = ballRect.right + padding;
+      // 如果右侧空间不够，调整到左侧
+      if (left + menuWidth + padding > viewportWidth) {
+        left = ballRect.left - menuWidth - padding;
+      }
     } else {
-      // 靠右，向左展开
-      left = ballRect.left - menuWidth - 10;
+      // 悬浮球在右侧，菜单向左展开
+      left = ballRect.left - menuWidth - padding;
+      // 如果左侧空间不够，调整到右侧
+      if (left < padding) {
+        left = ballRect.right + padding;
+      }
     }
     
-    if (ballRect.top < window.innerHeight / 2) {
-      // 靠上，向下展开
-      top = ballRect.top;
-    } else {
-      // 靠下，向上展开
-      top = ballRect.bottom - menuHeight;
+    // 确保水平方向不超出屏幕
+    left = Math.max(padding, Math.min(left, viewportWidth - menuWidth - padding));
+    
+    // 计算垂直位置
+    // 优先与悬浮球顶部对齐
+    top = ballRect.top;
+    
+    // 如果菜单会超出底部，向上调整
+    if (top + menuHeight + padding > viewportHeight) {
+      top = viewportHeight - menuHeight - padding;
     }
     
-    // 确保不超出屏幕
-    left = Math.max(10, Math.min(left, window.innerWidth - menuWidth - 10));
-    top = Math.max(10, Math.min(top, window.innerHeight - menuHeight - 10));
+    // 确保不超出顶部
+    top = Math.max(padding, top);
     
     menuEl.style.left = left + 'px';
     menuEl.style.top = top + 'px';
@@ -413,27 +435,64 @@
   function openSubmenu(type) {
     floatingBallState.submenuOpen = true;
     
+    // 先关闭主菜单
+    menuEl.classList.remove('show');
+    
     if (type === 'api') {
       renderApiSubmenu();
     } else if (type === 'template') {
       renderTemplateSubmenu();
     }
     
-    // 计算子菜单位置（在菜单旁边）
-    const menuRect = menuEl.getBoundingClientRect();
-    const submenuWidth = 220;
+    // 先临时显示子菜单以获取真实尺寸
+    submenuEl.style.visibility = 'hidden';
+    submenuEl.style.display = 'block';
+    
+    // 使用悬浮球的位置而不是菜单的位置
+    const ballRect = ballEl.getBoundingClientRect();
+    const submenuWidth = submenuEl.offsetWidth || 220;
+    const submenuHeight = submenuEl.offsetHeight;
+    
+    // 恢复显示状态
+    submenuEl.style.visibility = '';
+    submenuEl.style.display = '';
+    
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const padding = 10;
     
     let left, top;
     
-    if (menuRect.left < window.innerWidth / 2) {
-      // 菜单在左侧，子菜单在右侧
-      left = menuRect.right + 10;
+    // 计算水平位置（基于悬浮球）
+    if (ballRect.left < viewportWidth / 2) {
+      // 悬浮球在左侧，子菜单在右侧
+      left = ballRect.right + padding;
+      // 如果右侧空间不够，调整到左侧
+      if (left + submenuWidth + padding > viewportWidth) {
+        left = ballRect.left - submenuWidth - padding;
+      }
     } else {
-      // 菜单在右侧，子菜单在左侧
-      left = menuRect.left - submenuWidth - 10;
+      // 悬浮球在右侧，子菜单在左侧
+      left = ballRect.left - submenuWidth - padding;
+      // 如果左侧空间不够，调整到右侧
+      if (left < padding) {
+        left = ballRect.right + padding;
+      }
     }
     
-    top = menuRect.top;
+    // 确保水平方向不超出屏幕
+    left = Math.max(padding, Math.min(left, viewportWidth - submenuWidth - padding));
+    
+    // 计算垂直位置（基于悬浮球）
+    top = ballRect.top;
+    
+    // 如果子菜单会超出底部，向上调整
+    if (top + submenuHeight + padding > viewportHeight) {
+      top = viewportHeight - submenuHeight - padding;
+    }
+    
+    // 确保不超出顶部
+    top = Math.max(padding, top);
     
     submenuEl.style.left = left + 'px';
     submenuEl.style.top = top + 'px';
@@ -444,6 +503,8 @@
   function closeSubmenu() {
     floatingBallState.submenuOpen = false;
     submenuEl.classList.remove('show');
+    // 关闭子菜单时重新打开主菜单
+    openMenu();
   }
 
   // 渲染 API 预设子菜单
@@ -716,9 +777,11 @@
         openSubmenu('template');
         break;
       case 'role-api':
+        closeMenu(); // 关闭菜单
         openRoleApiConfig();
         break;
       case 'style-settings':
+        closeMenu(); // 关闭菜单
         openStyleSettings();
         break;
       case 'hide':
@@ -734,7 +797,6 @@
   function openRoleApiConfig() {
     const chatId = state.activeChatId;
     if (!chatId) {
-      closeMenu();
       if (typeof showToast === 'function') {
         showToast('请先打开一个聊天');
       }
@@ -743,8 +805,6 @@
     
     const chat = state.chats[chatId];
     if (!chat) return;
-    
-    closeMenu();
     
     // 创建配置面板
     const panel = document.createElement('div');
@@ -899,17 +959,20 @@
     
     panel.querySelector('.role-api-back').addEventListener('click', () => {
       panel.remove();
+      openMenu(); // 返回时重新打开菜单
     });
     
     panel.querySelector('.role-api-save').addEventListener('click', async () => {
       await saveRoleApiConfig(chatId);
       panel.remove();
+      openMenu(); // 保存后重新打开菜单
     });
     
     // 点击面板外关闭
     panel.addEventListener('click', (e) => {
       if (e.target === panel) {
         panel.remove();
+        openMenu(); // 关闭后重新打开菜单
       }
     });
   }
@@ -1028,7 +1091,6 @@ touch-action: none;`;
   
   // 打开样式设置面板
   function openStyleSettings() {
-    closeMenu();
     
     const panel = document.createElement('div');
     panel.className = 'fb-style-panel';
@@ -1133,12 +1195,14 @@ touch-action: none;`;
     // 返回按钮
     panel.querySelector('.fb-style-back').addEventListener('click', () => {
       panel.remove();
+      openMenu(); // 返回时重新打开菜单
     });
     
     // 完成按钮
     panel.querySelector('.fb-style-save').addEventListener('click', () => {
       saveStyleSettings(panel);
       panel.remove();
+      openMenu(); // 保存后重新打开菜单
     });
     
     // 样式类型切换
