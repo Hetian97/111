@@ -1431,9 +1431,9 @@ ${recentHistoryWithUser}
         </div>
       </div>`;
 
-    modalResolve = null;
-    modalTitle.textContent = '编辑日记';
-    modalBody.innerHTML = formHtml;
+    window._modalResolve = null;
+    window._modalTitle.textContent = '编辑日记';
+    window._modalBody.innerHTML = formHtml;
 
     const modalFooter = document.querySelector('#custom-modal .custom-modal-footer');
     if (modalFooter) {

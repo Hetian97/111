@@ -526,9 +526,9 @@ async function cleanupRedundantData() {
     `;
 
     return new Promise(resolve => {
-      modalResolve = null;
-      modalTitle.textContent = '选择要恢复默认的区域';
-      modalBody.innerHTML = contentHtml;
+      window._modalResolve = null;
+      window._modalTitle.textContent = '选择要恢复默认的区域';
+      window._modalBody.innerHTML = contentHtml;
 
       const modalFooter = document.querySelector('#custom-modal .custom-modal-footer');
       if (modalFooter) {

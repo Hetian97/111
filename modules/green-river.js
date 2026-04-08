@@ -647,21 +647,38 @@
       const idx = typeof rc.segmentIndex === 'number' ? rc.segmentIndex : parseInt(rc.segmentIndex, 10);
       if (!isNaN(idx)) commentMap[idx] = Array.isArray(rc.comments) ? rc.comments : [];
     });
+    
+    // 调试信息
+    console.log('[绿江调试] 章节评论数据:', chapter.readerComments);
+    console.log('[绿江调试] 评论映射:', commentMap);
+    
     const segments = (chapter.content || '').split(/\n\n/);
+    console.log('[绿江调试] 段落数量:', segments.length);
+    console.log('[绿江调试] 前3个段落:', segments.slice(0, 3));
+    
     const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     if (segments.length <= 1 && Object.keys(commentMap).length === 0) {
       contentArea.innerHTML += `<div class="gr-chapter-text">${(chapter.content || '').replace(/\n/g, '<br>')}</div>`;
     } else {
       let bodyHtml = '';
       segments.forEach((seg, i) => {
+        // 先转义文本内容，然后替换换行符
         const text = escapeHtml(seg.trim()).replace(/\n/g, '<br>');
         const comments = commentMap[i];
+        
+        // 创建段落div
         bodyHtml += '<div class="gr-chapter-segment">' + text;
+        
+        // 如果有评论，添加气泡（不转义，因为这是我们自己生成的HTML）
         if (comments && comments.length > 0) {
+          console.log(`[绿江调试] 段落 ${i} 有 ${comments.length} 条评论`);
           bodyHtml += ` <span class="gr-reader-comment-bubble" data-segment-index="${i}">${comments.length}条</span>`;
         }
+        
         bodyHtml += '</div>';
       });
+      console.log('[绿江调试] 生成的HTML长度:', bodyHtml.length);
+      console.log('[绿江调试] HTML片段示例:', bodyHtml.substring(0, 500));
       contentArea.innerHTML += bodyHtml;
     }
 

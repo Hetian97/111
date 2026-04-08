@@ -110,6 +110,10 @@ document.addEventListener('DOMContentLoaded', () => {
       customThoughtsPrompt: '',            // 自定义心声提示词内容，空字符串表示使用默认
       customSummaryPromptEnabled: false,   // 自定义结构化总结提示词开关，默认关闭
       customSummaryPrompt: '',             // 自定义结构化总结提示词内容，空字符串表示使用默认
+      customChatPromptEnabled: false,      // 自定义聊天提示词开关，默认关闭
+      customChatPromptSingle: '',          // 自定义单聊提示词内容
+      customChatPromptGroup: '',           // 自定义群聊提示词内容
+      customChatPromptOffline: '',         // 自定义线下模式提示词内容
       enableQzoneActions: false,          // 新增：全局动态开关，默认关闭
       enableViewMyPhone: false,           // 新增：全局查看User手机开关，默认关闭
       enableCrossChat: true,              // 新增：全局跨聊天消息开关（群聊↔私聊），默认开启
@@ -540,6 +544,12 @@ document.addEventListener('DOMContentLoaded', () => {
     bindBackgroundKeepAliveEvents();
     loadBackgroundKeepAliveSettings();
     loadShoppingCart(); // 加载购物车数据
+    
+    // 初始化悬浮球
+    if (typeof initFloatingBall === 'function') {
+      initFloatingBall();
+    }
+    
     showScreen('home-screen');
   }
 

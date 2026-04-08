@@ -2489,7 +2489,8 @@
       const folderPath = `backups/${dateStr}`;
 
       // 核心设置
-      const RAW_SIZE_LIMIT = 3 * 1024 * 1024; // 3MB per slice (压缩前)
+      const RAW_SIZE_LIMIT = 1.5 * 1024 * 1024; // 1.5MB per slice (压缩前，更保守)
+      const COMPRESSED_SIZE_LIMIT = 95 * 1024 * 1024; // 95MB (GitHub Blob 限制 100MB，留余量)
       const DB_BATCH_SIZE = 50;
       const MAX_CONCURRENT_UPLOADS = 6;
 
@@ -2532,7 +2533,19 @@
 
             if (!res.ok) {
               const err = await res.json();
-              throw new Error(err.message || res.statusText);
+              const errorMsg = err.message || res.statusText;
+              
+              // 🔥 特殊处理：如果是大小超限错误，给出更明确的提示
+              if (errorMsg.includes('too large') || errorMsg.includes('size')) {
+                const sizeMB = (contentBase64.length * 0.75 / 1024 / 1024).toFixed(2);
+                throw new Error(
+                  `GitHub Blob 大小超限 (${sizeMB}MB)！\n` +
+                  `原因：此分片包含大量图片或不可压缩数据。\n` +
+                  `建议：使用"高级导出"功能分批备份，或清理大图片后重试。`
+                );
+              }
+              
+              throw new Error(errorMsg);
             }
 
             const data = await res.json();
@@ -2585,21 +2598,36 @@
 
         // 压缩
         const contentBase64 = compressAndEncode(jsonString);
-        const compressedSizeMB = (contentBase64.length * 0.75 / 1024 / 1024).toFixed(2);
-        totalCompressedSize += contentBase64.length * 0.75;
+        const compressedSize = contentBase64.length * 0.75; // Base64 解码后的实际大小
+        const compressedSizeMB = (compressedSize / 1024 / 1024).toFixed(2);
+        totalCompressedSize += compressedSize;
+
+        // 🔥 关键修复：检查压缩后大小是否超过 GitHub 限制
+        if (compressedSize > COMPRESSED_SIZE_LIMIT) {
+          const compressionRatio = ((compressedSize / jsonString.length) * 100).toFixed(1);
+          throw new Error(
+            `分片 #${partIndex} 压缩后仍超过 GitHub 限制！\n` +
+            `原始: ${rawSizeMB}MB → 压缩后: ${compressedSizeMB}MB (${compressionRatio}%)\n` +
+            `限制: ${(COMPRESSED_SIZE_LIMIT / 1024 / 1024).toFixed(0)}MB\n` +
+            `建议：数据包含大量图片或二进制内容，压缩效果差。\n` +
+            `请尝试：1) 清理聊天中的大图片 2) 使用"高级导出"分批备份`
+          );
+        }
 
         if (!isSilent) {
           const modalBody = document.getElementById('custom-modal-body');
           if (modalBody) {
+            const compressionRatio = ((compressedSize / jsonString.length) * 100).toFixed(1);
             modalBody.innerHTML = `<div class="spinner" style="margin: 20px auto;"></div>
               <p style="text-align:center;">
                 正在压缩上传中...<br>
                 队列: <b>${activeUploads.size + 1}</b> / ${MAX_CONCURRENT_UPLOADS}<br>
-                分片 #${partIndex}: ${rawSizeMB} MB → ${compressedSizeMB} MB (压缩后)
+                分片 #${partIndex}: ${rawSizeMB} MB → ${compressedSizeMB} MB (压缩率 ${compressionRatio}%)
               </p>`;
           }
         } else {
-          console.log(`[大数据备份] 分片 #${partIndex}: ${rawSizeMB}MB → ${compressedSizeMB}MB`);
+          const compressionRatio = ((compressedSize / jsonString.length) * 100).toFixed(1);
+          console.log(`[大数据备份] 分片 #${partIndex}: ${rawSizeMB}MB → ${compressedSizeMB}MB (${compressionRatio}%)`);
         }
 
         // 创建 Blob

@@ -93,4 +93,9 @@ db.version(55).stores({
   shoppingProducts: '++id, name, description, categoryId'
 });
 
+// 聊天设置模板系统
+db.version(56).stores({
+  chatSettingsPresets: '++id, name, createdAt'
+});
+
 window.db = db;

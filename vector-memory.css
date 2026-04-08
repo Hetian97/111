@@ -117,6 +117,11 @@
   padding: 2px 6px;
   border-radius: 4px;
 }
+.vm-meta-time {
+  font-weight: 500;
+  color: var(--text-primary, #666);
+  background: rgba(0, 122, 255, 0.08);
+}
 .vm-item-actions {
   display: flex;
   gap: 4px;

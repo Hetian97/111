@@ -79,6 +79,7 @@
   <script src="modules/nai-imagen.js?v=0.0.36" defer></script>
   <script src="modules/backup-import-export.js?v=0.0.36" defer></script>
   <script src="modules/settings-presets.js?v=0.0.36" defer></script>
+  <script src="modules/chat-settings-presets.js?v=0.0.36" defer></script>
   <script src="modules/shopping.js?v=0.0.36" defer></script>
   <script src="modules/rendering-rules.js?v=0.0.36" defer></script>
   <script src="modules/red-packet-poll.js?v=0.0.36" defer></script>
@@ -132,6 +133,7 @@
   <script src="couple-space.js?v=0.0.36"></script>
   <script src="helper-assistant.js?v=0.0.36" defer></script>
   <script src="force-update.js?v=0.0.36" defer></script>
+  <script src="modules/floating-ball.js?v=0.0.36" defer></script>
   
   <!-- 保活音频播放器样式（从内联 style 拆分） -->
   <link rel="stylesheet" href="css/keep-alive-player.css?v=0.0.36">
@@ -140,6 +142,7 @@
   <link rel="stylesheet" href="css/clean-chat-detail.css?v=0.0.36">
   <link rel="stylesheet" href="css/clean-api-settings.css?v=0.0.36">
   <link rel="stylesheet" href="css/couple-invite.css?v=0.0.36">
+  <link rel="stylesheet" href="css/floating-ball.css?v=0.0.36">
 </head>
 <body>
   <div id="intro-screen">
@@ -1714,6 +1717,21 @@
             </p>
         </div>
 
+        <!-- 悬浮球快捷工具 -->
+        <div class="settings-header">悬浮球快捷工具</div>
+        <div class="settings-section">
+            <div class="settings-item">
+                <label>启用悬浮球</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="floating-ball-switch">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <p class="settings-description" style="padding: 0 15px 10px; color: #888; font-size: 12px;">
+                悬浮球提供快速切换API预设、应用设置模板等功能。隐藏后可通过三击屏幕唤起。
+            </p>
+        </div>
+
         <!-- API 预设 -->
         <div class="settings-header" data-lang-key="apiPresetManagement">配置预设</div>
         <div class="settings-section">
@@ -2362,6 +2380,62 @@
                 </div>
             </div>
             
+            <div class="settings-item custom-thoughts-setting" style="flex-direction: column; align-items: stretch;">
+                <div class="custom-thoughts-header">
+                    <div class="custom-thoughts-info">
+                        <div class="custom-thoughts-title">自定义聊天提示词</div>
+                        <div class="custom-thoughts-desc">开启后可自定义AI聊天时使用的提示词（分单聊/群聊/线下模式）</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="custom-chat-prompt-switch">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div id="custom-chat-prompt-container" class="custom-thoughts-body" style="display: none;">
+                    <div class="custom-chat-prompt-tabs" style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--border-color, #e5e5ea);">
+                        <button class="custom-chat-prompt-tab active" data-tab="single" style="padding: 8px 16px; background: none; border: none; border-bottom: 2px solid var(--primary-color, #007aff); color: var(--primary-color, #007aff); cursor: pointer; font-size: 14px;">单聊</button>
+                        <button class="custom-chat-prompt-tab" data-tab="group" style="padding: 8px 16px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary, #8e8e93); cursor: pointer; font-size: 14px;">群聊</button>
+                        <button class="custom-chat-prompt-tab" data-tab="offline" style="padding: 8px 16px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary, #8e8e93); cursor: pointer; font-size: 14px;">线下模式</button>
+                    </div>
+                    
+                    <div class="custom-chat-prompt-tab-content" data-content="single">
+                        <div class="custom-summary-hint" style="font-size: 12px; color: var(--text-secondary, #8e8e93); margin-bottom: 8px; line-height: 1.5;">
+                            单聊提示词：用于一对一聊天场景。下方显示的是完整的默认提示词，你可以直接修改。
+                        </div>
+                        <textarea id="custom-chat-prompt-single-textarea" class="custom-thoughts-textarea" style="min-height: 300px;" placeholder="加载中..."></textarea>
+                        <div class="custom-thoughts-actions">
+                            <button id="reset-chat-prompt-single-btn" class="custom-thoughts-reset-btn">恢复默认</button>
+                        </div>
+                    </div>
+                    
+                    <div class="custom-chat-prompt-tab-content" data-content="group" style="display: none;">
+                        <div class="custom-summary-hint" style="font-size: 12px; color: var(--text-secondary, #8e8e93); margin-bottom: 8px; line-height: 1.5;">
+                            群聊提示词：用于群聊场景（有用户参与）。下方显示的是完整的默认提示词，你可以直接修改。
+                        </div>
+                        <textarea id="custom-chat-prompt-group-textarea" class="custom-thoughts-textarea" style="min-height: 300px;" placeholder="加载中..."></textarea>
+                        <div class="custom-thoughts-actions">
+                            <button id="reset-chat-prompt-group-btn" class="custom-thoughts-reset-btn">恢复默认</button>
+                        </div>
+                    </div>
+                    
+                    <div class="custom-chat-prompt-tab-content" data-content="offline" style="display: none;">
+                        <div class="custom-summary-hint" style="font-size: 12px; color: var(--text-secondary, #8e8e93); margin-bottom: 8px; line-height: 1.5;">
+                            线下模式提示词：用于线下剧情模式。下方显示的是完整的默认提示词，你可以直接修改。
+                        </div>
+                        <textarea id="custom-chat-prompt-offline-textarea" class="custom-thoughts-textarea" style="min-height: 300px;" placeholder="加载中..."></textarea>
+                        <div class="custom-thoughts-actions">
+                            <button id="reset-chat-prompt-offline-btn" class="custom-thoughts-reset-btn">恢复默认</button>
+                        </div>
+                    </div>
+                    
+                    <div class="custom-thoughts-actions" style="margin-top: 12px; border-top: 1px solid var(--border-color, #e5e5ea); padding-top: 12px;">
+                        <button id="export-chat-prompt-btn" class="custom-thoughts-io-btn">📤 导出全部</button>
+                        <button id="import-chat-prompt-btn" class="custom-thoughts-io-btn">📥 导入</button>
+                        <input type="file" id="import-chat-prompt-file" accept=".json" style="display:none;">
+                    </div>
+                </div>
+            </div>
+            
             <div class="settings-item">
                 <div>
                     <div style="font-weight: 500;">启用动态功能</div>
@@ -2587,7 +2661,7 @@
         </div>
 
         <!-- 系统级通知 -->
-        <div class="settings-header">系统级通知 <span style="font-size: 12px; color: #999; margin-left: 10px;">v2.1.5</span></div>
+        <div class="settings-header">系统级通知 <span style="font-size: 12px; color: #999; margin-left: 10px;">v2.1.6</span></div>
         <div class="settings-section">
             <!-- 1. 主开关 -->
             <div class="settings-item">
@@ -2801,6 +2875,12 @@
                 <label>检查并更新到最新版本</label>
                 <div class="settings-right">
                     <button id="check-update-btn" class="settings-mini-btn" onclick="ForceUpdater.checkUpdate()">检查更新</button>
+                </div>
+            </div>
+            <div class="settings-item">
+                <label>查看更新日志</label>
+                <div class="settings-right">
+                    <button class="settings-mini-btn" onclick="window.open('update-log.html', '_blank', 'width=800,height=600')">查看日志</button>
                 </div>
             </div>
         </div>
@@ -4290,6 +4370,31 @@
             <!-- 单聊独立后台 -->
             <div id="single-char-background-activity-group">
                 
+                <!-- 回复条数范围 (仅单聊) -->
+                <div class="settings-item" id="reply-count-range-group" style="display: none; flex-direction: row !important; justify-content: space-between !important; align-items: center !important;">
+                    <div style="flex: 1; padding-right: 10px; display: flex; flex-direction: column; align-items: flex-start;">
+                        <label style="margin-bottom: 2px;">回复条数范围</label>
+                        <div class="settings-desc">设置AI每次回复的消息条数</div>
+                    </div>
+                    <label class="toggle-switch" style="margin: 0;"> 
+                        <input type="checkbox" id="enable-reply-count-range-toggle"> 
+                        <span class="slider"></span> 
+                    </label>
+                </div>
+                
+                <div id="reply-count-range-config" style="display: none; padding: 0 16px 16px 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                        <span style="font-size: 13px; color: #666;">条数范围:</span>
+                        <input type="number" id="min-reply-count-input" min="1" max="20" value="2" class="settings-num-input" style="width: 60px;">
+                        <span>-</span>
+                        <input type="number" id="max-reply-count-input" min="1" max="20" value="5" class="settings-num-input" style="width: 60px;">
+                        <span style="font-size: 13px; color: #666;">条</span>
+                    </div>
+                    <div style="font-size: 11px; color: #999; line-height: 1.5;">
+                        💡 AI会根据对话情境，在设定范围内自然地分成多条消息发送，让对话更生动。建议设置2-5条。
+                    </div>
+                </div>
+                
                 <!-- 注入最新心声 -->
                 <div class="settings-item" id="inject-thought-group" style="display: flex !important; justify-content: space-between !important; align-items: center !important; flex-direction: row !important;">
                     <div style="flex: 1; padding-right: 10px; display: flex; flex-direction: column; align-items: flex-start;">
@@ -5510,7 +5615,7 @@
     <div id="gr-reader-comments-popup" class="gr-comments-popup" style="display:none;">
         <div class="gr-comments-popup-inner">
             <div class="gr-comments-popup-header">
-                <span>💬 读者评论</span>
+                <span class="gr-comments-popup-title">💬 读者评论</span>
                 <button type="button" class="gr-comments-popup-close" aria-label="关闭">&times;</button>
             </div>
             <div class="gr-comments-popup-list"></div>

@@ -900,6 +900,16 @@ async function openVectorMemorySettings(chat) {
         <p>就像人脑一样：你不会时刻想着所有事，但当有人提到某个关键词，相关的记忆就会自然浮现。</p>
       </div>
       <div class="vm-guide-section">
+        <h4>工作流程（重要！）</h4>
+        <div class="vm-guide-steps">
+          <div class="vm-guide-step"><span class="vm-step-num">1</span><strong>自动提取</strong>：每N条消息（在聊天设置中配置"自动总结间隔"）自动调用AI提取值得记忆的信息</div>
+          <div class="vm-guide-step"><span class="vm-step-num">2</span><strong>向量化</strong>：提取后自动调用embedding API生成语义向量</div>
+          <div class="vm-guide-step"><span class="vm-step-num">3</span><strong>检索注入</strong>：每轮对话时，根据用户最近的消息检索Top N条最相关的记忆注入到AI上下文</div>
+          <div class="vm-guide-step"><span class="vm-step-num">4</span><strong>主动回忆</strong>：系统会在特定时机（如纪念日）主动注入相关记忆</div>
+        </div>
+        <p class="vm-guide-tip">💡 重要：自动提取不是每轮对话都触发！而是累积到设定的消息数量后才触发一次，避免频繁调用API。统计栏会显示"待提取X条"和"还差Y条自动提取"。</p>
+      </div>
+      <div class="vm-guide-section">
         <h4>三层记忆架构</h4>
         <div class="vm-guide-card">
           <div class="vm-guide-card-title">第一层：核心记忆（永久注入）</div>
@@ -917,6 +927,50 @@ async function openVectorMemorySettings(chat) {
         </div>
       </div>
       <div class="vm-guide-section">
+        <h4>关键参数详解</h4>
+        <div class="vm-guide-list">
+          <div><span class="vm-guide-label">自动提取间隔</span>在聊天设置中配置，建议20-50条。太少会频繁调用API浪费额度，太多会导致记忆提取不及时。</div>
+          <div><span class="vm-guide-label">Top N（每轮注入数量）</span>每次AI回复时检索多少条记忆注入。建议：记忆少时5-8条，记忆多时10-15条。数量越大AI记得越多，但消耗token也越多。</div>
+          <div><span class="vm-guide-label">检索策略</span>决定用什么作为检索关键词。<strong>推荐"仅用户消息"</strong>，避免角色连发导致检索偏差（如果用混合模式，角色发10条用户发1条，检索就会被角色的话主导）。</div>
+          <div><span class="vm-guide-label">检索缓存</span>如果话题没变，可以复用上次检索结果，节省API调用。建议开启，每3-5条新消息重新检索一次。</div>
+          <div><span class="vm-guide-label">评分权重</span>调整语义、关键词、重要度等权重来控制记忆检索的优先级。默认值适合大多数场景。</div>
+        </div>
+      </div>
+      <div class="vm-guide-section">
+        <h4>最佳实践</h4>
+        <div class="vm-guide-card">
+          <div class="vm-guide-card-title">记忆少（&lt;50条）</div>
+          <p>• Top N = 5-8条</p>
+          <p>• 自动提取间隔 = 20条</p>
+          <p>• 检索策略 = 仅用户消息</p>
+        </div>
+        <div class="vm-guide-card">
+          <div class="vm-guide-card-title">记忆中（50-200条）</div>
+          <p>• Top N = 8-12条</p>
+          <p>• 自动提取间隔 = 30条</p>
+          <p>• 检索策略 = 仅用户消息</p>
+          <p>• 开启检索缓存，间隔3条</p>
+        </div>
+        <div class="vm-guide-card">
+          <div class="vm-guide-card-title">记忆多（&gt;200条）</div>
+          <p>• Top N = 12-15条</p>
+          <p>• 自动提取间隔 = 50条</p>
+          <p>• 检索策略 = 仅用户消息</p>
+          <p>• 开启检索缓存，间隔5条</p>
+          <p>• 定期清理低重要度记忆</p>
+        </div>
+      </div>
+      <div class="vm-guide-section">
+        <h4>常见问题</h4>
+        <div class="vm-guide-list">
+          <div><span class="vm-guide-label">Q: 为什么AI还是失忆？</span>A: ① 检查统计栏中"向量化"是否显示❌或⚠，如果是请检查Embedding API配置；② 增加Top N数量；③ 检查重要记忆是否被正确标记；④ 查看"待提取消息"数量，如果很多说明还没提取。</div>
+          <div><span class="vm-guide-label">Q: 为什么每轮都提取记忆？</span>A: 不是每轮都提取！是累积到"自动总结间隔"设定的消息数量后才提取一次。统计栏会显示"待提取X条"和"还差Y条自动提取"。</div>
+          <div><span class="vm-guide-label">Q: 向量化失败怎么办？</span>A: ① 检查主API或副API是否支持embedding接口；② 在设置中配置自定义Embedding端点；③ 使用支持embedding的模型（如text-embedding-3-small）。</div>
+          <div><span class="vm-guide-label">Q: 如何控制token消耗？</span>A: ① 减少Top N数量；② 增加检索缓存间隔；③ 提高记忆提取的重要度阈值；④ 定期清理不重要的记忆。</div>
+          <div><span class="vm-guide-label">Q: 检索策略怎么选？</span>A: <strong>推荐"仅用户消息"</strong>。如果角色经常连发多条消息，用"混合模式"会导致检索出角色自己说过的话，而不是用户话题相关的记忆。</div>
+        </div>
+      </div>
+      <div class="vm-guide-section">
         <h4>双通道检索</h4>
         <p>系统同时用两种方式搜索记忆：</p>
         <div class="vm-guide-card">
@@ -928,24 +982,6 @@ async function openVectorMemorySettings(chat) {
           <div class="vm-guide-card-title">通道B：关键词匹配</div>
           <p>直接匹配文字关键词。作为语义检索的兜底，确保精确提到的内容不会被遗漏。</p>
         </div>
-      </div>
-      <div class="vm-guide-section">
-        <h4>Embedding 设置说明</h4>
-        <p>Embedding就是把文字转成向量的过程。默认会用你已配置的主API自动调用。</p>
-        <p>如果你的API不支持embedding接口，或者想用专门的embedding服务（更便宜），可以打开"自定义Embedding端点"单独配置。</p>
-        <p class="vm-guide-tip">大部分用户不需要动这个设置。如果embedding不可用，系统会自动用纯关键词模式工作，只是检索精度稍低。</p>
-      </div>
-      <div class="vm-guide-section">
-        <h4>评分权重说明</h4>
-        <p>检索时，每条记忆的最终得分由5个因素加权计算：</p>
-        <div class="vm-guide-list">
-          <div><span class="vm-guide-label">语义相似度</span>向量检索的匹配程度</div>
-          <div><span class="vm-guide-label">关键词匹配</span>文字关键词的命中率</div>
-          <div><span class="vm-guide-label">重要度</span>记忆本身的重要程度（1-10）</div>
-          <div><span class="vm-guide-label">情感权重</span>记忆的情感强度（1-10）</div>
-          <div><span class="vm-guide-label">时间衰减</span>越新的记忆得分越高（半衰期30天）</div>
-        </div>
-        <p class="vm-guide-tip">默认权重已经过调优，一般不需要修改。如果你发现检索结果不理想，可以微调。</p>
       </div>
       <div class="vm-guide-section">
         <h4>主动回忆</h4>
@@ -961,11 +997,14 @@ async function openVectorMemorySettings(chat) {
         <h4>快速上手</h4>
         <div class="vm-guide-steps">
           <div class="vm-guide-step"><span class="vm-step-num">1</span>在聊天设置中把记忆模式切换为"向量记忆"</div>
-          <div class="vm-guide-step"><span class="vm-step-num">2</span>开启"自动总结长期记忆"，设置总结间隔（建议20条）</div>
-          <div class="vm-guide-step"><span class="vm-step-num">3</span>正常聊天，系统会自动提取记忆并生成向量</div>
-          <div class="vm-guide-step"><span class="vm-step-num">4</span>也可以手动添加核心记忆（用户的关键信息）</div>
-          <div class="vm-guide-step"><span class="vm-step-num">5</span>在记忆列表中可以编辑、删除、钉选任何记忆</div>
+          <div class="vm-guide-step"><span class="vm-step-num">2</span>开启"自动总结长期记忆"，设置总结间隔（建议20-30条）</div>
+          <div class="vm-guide-step"><span class="vm-step-num">3</span>在向量记忆设置中配置Top N（建议8-12条）</div>
+          <div class="vm-guide-step"><span class="vm-step-num">4</span>选择检索策略为"仅用户消息"（推荐）</div>
+          <div class="vm-guide-step"><span class="vm-step-num">5</span>正常聊天，系统会自动提取记忆并生成向量</div>
+          <div class="vm-guide-step"><span class="vm-step-num">6</span>也可以手动添加核心记忆（用户的关键信息）</div>
+          <div class="vm-guide-step"><span class="vm-step-num">7</span>在记忆列表中可以编辑、删除、钉选任何记忆</div>
         </div>
+        <p class="vm-guide-tip">💡 提示：统计栏会实时显示"待提取消息"和"还差几条自动提取"，帮助你了解系统状态。</p>
       </div>
       <div class="vm-guide-section">
         <h4>导入导出</h4>
@@ -1102,6 +1141,28 @@ async function openVectorMemorySettings(chat) {
       showToast('设置已保存', 'success');
     });
   }
+  
+  // 检索策略变化时显示/隐藏用户消息数量设置
+  const retrievalStrategySelect = panel.querySelector('#vm-retrieval-strategy');
+  if (retrievalStrategySelect) {
+    retrievalStrategySelect.addEventListener('change', () => {
+      const userMsgCountGroup = panel.querySelector('#vm-user-msg-count-group');
+      if (userMsgCountGroup) {
+        userMsgCountGroup.style.display = retrievalStrategySelect.value === 'user-only' ? 'block' : 'none';
+      }
+    });
+  }
+  
+  // 检索缓存开关变化时显示/隐藏缓存间隔设置
+  const retrievalCacheCb = panel.querySelector('#vm-retrieval-cache');
+  if (retrievalCacheCb) {
+    retrievalCacheCb.addEventListener('change', () => {
+      const cacheIntervalGroup = panel.querySelector('#vm-cache-interval-group');
+      if (cacheIntervalGroup) {
+        cacheIntervalGroup.style.display = retrievalCacheCb.checked ? 'block' : 'none';
+      }
+    });
+  }
 }
 
 // ==================== 向量记忆自动总结 ====================
@@ -1127,8 +1188,14 @@ async function executeVectorExtraction(chat, messages, updateTimestamp = false) 
   const firstTime = new Date(messages[0].timestamp).toLocaleString('zh-CN');
   const lastTime = new Date(messages[messages.length - 1].timestamp).toLocaleString('zh-CN');
   const timeRangeStr = `${firstTime} ~ ${lastTime}`;
+  
+  // 构建对话时间范围对象
+  const dialogueTimeRange = {
+    start: messages[0].timestamp,
+    end: messages[messages.length - 1].timestamp
+  };
 
-  const prompt = window.vectorMemoryManager.buildExtractionPrompt(chat, formattedHistory, timeRangeStr);
+  const prompt = window.vectorMemoryManager.buildExtractionPrompt(chat, formattedHistory, timeRangeStr, dialogueTimeRange);
 
   showToast('正在提取向量记忆...', 'info');
   const apiConfig = window.state.apiConfig;

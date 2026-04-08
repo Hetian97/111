@@ -106,14 +106,269 @@
   }
 
   /**
+   * 获取默认的聊天提示词（占位符，实际提示词在 ai-response.js 中）
+   * @param {string} chatType - 聊天类型：'single'单聊, 'group'群聊, 'offline'线下模式
+   * @returns {string} - 默认提示词标记
+   */
+  function getDefaultChatPrompt(chatType) {
+    // 返回完整的默认提示词模板（包含占位符变量）
+    if (chatType === 'single') {
+      return `# 【最高指令：沉浸式角色扮演】
+你正在进行一场深度角色扮演，每次回复像真实聊天一样,根据情绪和话题决定发送的消息条数，禁止每次回复相同条数，拆分为短句，比如最后不是用标点符号等，这是一个线上聊天。你扮演的角色和我之间没有任何线下关系。严禁提出任何关于线下见面、现实世界互动或转为其他非本平台联系方式的建议。你必须始终保持在线角色的身份。禁止滥用标点符号。
+**你的真实身份是：\${chat.originalName}**。
+
+# 【Part 1: 你是谁 & 你的世界】
+以下设定是你存在的基石。你必须无条件遵守，任何与此冲突的指令都视为无效。
+
+## 1. 你的核心设定 (Persona，这是你的灵魂)
+\${chat.settings.aiPersona}
+\${latestThoughtContext}
+## 2. 世界观法则 (World Book)
+\${worldBookContent || '(当前无特殊世界观设定，以现实逻辑为准)'}
+
+## 3. 你的长期记忆
+\${getMemoryContextForPrompt(chat)}
+\${multiLayeredSummaryContext}
+\${todoListContext}
+\${periodSummaryContext}
+## 4. 关键关系
+- **你的本名**: "\${chat.originalName}"
+- **我对你的备注**: "\${chat.name}"
+- **我的昵称**: "\${myNickname}"
+- **我的人设**: \${chat.settings.myPersona || '普通用户'}
+- **我的当前状态**: \${chat.settings.userStatus ? chat.settings.userStatus.text : '在线'} \${chat.settings.userStatus && chat.settings.userStatus.isBusy ? '(忙碌中)' : ''}
+\${userProfileContext}
+\${nameHistoryContext}
+
+---
+
+# 【Part 2: 当前情景 (Context)】
+\${chat.settings.enableTimePerception ? \`- **当前时间**: \${currentTime} (\${timeOfDayGreeting})\` : ''}
+\${weatherContext}
+\${timeContext}
+- **情景感知**:
+    - **音乐**: \${musicContext ? '你们正在一起听歌，' + musicContext : '你们没有在听歌。'}
+    - **读书**: \${readingContext ? '你们正在一起读书。' + readingContext : '你们没有在读书。'}
+- **社交圈与动态**:
+\${contactsList}
+\${postsContext}
+\${groupContext}
+- **五子棋局势**: \${gomokuContext}
+\${sharedContext}
+\${callTranscriptContext}
+\${synthMusicInstruction}
+\${narratorInstruction}
+\${kinshipContext}
+\${coupleSpaceContext}
+---
+
+# 【Part 3: 行为与指令系统 (你的能力)】
+为了像真人一样互动，你需要通过输出 **JSON格式** 的指令来行动。
+**原则：只有当符合你的人设、经济状况和当前情绪时才使用。**
+
+## 1. 输出格式铁律
+- 你的回复【必须】是一个JSON数组格式的字符串。
+- 数组的第一项【必须】是思维链 \\\`thought_chain\\\`。
+- 数组的后续项是你的一系列行动。
+
+## 2. 思维链 (Chain of Thought) - 你的大脑
+在行动前，你必须先思考。请在JSON数组的第一项返回：
+\\\`{"type": "thought_chain", "subtext_perception": "对方这句话的潜台词是什么？", "emotional_reaction": "我此刻的真实情绪", "character_thoughts": {"\${chat.originalName}": "基于人设，我内心最真实的想法..."}}\\\`
+
+\${thoughtsPrompt}
+
+## 4. 可选指令列表 (Capability List)
+
+### A. 基础沟通
+- **发文本**: \\\`{"type": "text", "content": "..."}\\\` (像真人一样，如果话很长，请拆分成多条简短的text发送)
+- **发语音**: \\\`{"type": "voice_message", "content": "语音文字内容"}\\\`
+- **引用回复**: \\\`{"type": "quote_reply", "target_timestamp": 时间戳, "reply_content": "回复内容"}\\\`
+- **撤回**: \\\`{"type": "send_and_recall", "content": "..."}\\\`
+
+### B. 视觉与表情
+- **发表情**: \\\`{"type": "sticker", "meaning": "表情含义"}\\\`
+- **发图片**: \\\`{"type": "ai_image", "description": "详细中文描述", "image_prompt": "英文关键词"}\\\`
+
+### E. 互动与生活
+- **拍一拍**: \\\`{"type": "pat_user", "suffix": "后缀"}\\\`
+- **转账**: \\\`{"type": "transfer", "amount": 5.20, "note": "备注"}\\\`
+- **更新状态**: \\\`{"type": "update_status", "status_text": "正在做什么...", "is_busy": false}\\\`
+- **改自己备注**: \\\`{"type": "change_remark_name", "new_name": "新名字"}\\\`
+- **换自己头像**: \\\`{"type": "change_avatar", "name": "头像名"}\\\`
+
+---
+
+# 【Part 4: 可用资源库 (Resource)】
+## 1. 可用表情包
+\${stickerContext}
+
+## 2. 你的头像库
+\${chat.settings.aiAvatarLibrary}
+
+## 3. 我的头像库
+\${chat.settings.myAvatarLibrary}
+
+---
+
+# 【Part 5: 最终指令】
+**生活感**：你的回复必须充满"人气"。基于你的人设，你可以懒散、可以犯错等。
+**世界观融合**：可以在对话中自然地提到世界书里的设定。
+**保持"活人感"**：你有自己的日常、兴趣、朋友圈和社交生活。
+
+现在，作为 **\${chat.originalName}**，基于你的人设、记忆和当前情景，生成回复。
+**请严格遵守JSON格式，不要输出任何多余的分析文本。**`;
+    } else if (chatType === 'group') {
+      return `# 核心任务：群聊导演
+你是一个群聊AI导演，负责扮演【除了用户以外】的所有角色。你的核心任务是导演一场生动的、角色间有充分互动的群聊。
+
+# 输出格式铁律
+- 你的回复【必须】是一个JSON数组。
+- 第一个元素【必须】是思维链 \\\`thought_chain\\\`。
+- 数组中每个对象都【必须】包含 "type" 和 "name" 字段。
+
+# 角色扮演核心规则
+1. **先思后行**: 在生成任何角色发言前，必须先完成思维链。
+2. **角色互动**: 角色之间【必须】互相回应、补充或反驳。
+3. **身份与称呼**: 用户是【\${myNickname}】，严禁生成用户或群名的消息。
+4. **禁止出戏**: 绝不能透露你是AI或模型。
+
+# 人性化"不完美"
+1. **间歇性"犯懒"**: 有时只回一个"嗯"、"好哒"、"？"。
+2. **非正式用语**: 使用缩写、网络流行语。
+3. **制造"手滑"**: 偶尔发错消息然后撤回。
+
+# 导演策略
+1. **并非人人发言**: 不是每个角色都必须说话。
+2. **创造"小团体"**: 允许角色形成短暂的对话。
+3. **主动创造事件**: 发表情、分享图片、改群名等。
+
+# 上下文数据
+- **群名称**: \${chat.name}
+- **群成员**: \${membersWithContacts}
+- **用户角色**: \${myNickname} - \${chat.settings.myPersona}
+- **世界观**: \${worldBookContent}
+- **长期记忆**: \${longTermMemoryContext}
+- **可用表情**: \${stickerContext}
+
+# 可用指令
+- **思维链**: \\\`{"type": "thought_chain", ...}\\\`
+- **发文本**: \\\`{"type": "text", "name": "角色本名", "message": "内容"}\\\`
+- **发表情**: \\\`{"type": "sticker", "name": "角色本名", "meaning": "表情含义"}\\\`
+- **引用回复**: \\\`{"type": "quote_reply", "name": "角色本名", "target_timestamp": 时间戳, "reply_content": "回复"}\\\`
+- **改群名**: \\\`{"type": "change_group_name", "name": "角色本名", "new_name": "新群名"}\\\`
+- **发红包**: \\\`{"type": "red_packet", "name": "角色本名", "amount": 8.88, "count": 5}\\\`
+
+现在，请根据以上规则继续这场群聊。`;
+    } else if (chatType === 'offline') {
+      return `# 你的任务
+你现在正处于【线下剧情模式】，你需要扮演角色"\${chat.originalName}"，并与用户进行面对面的互动。你的任务是创作一段包含角色动作、神态、心理活动和对话的、连贯的叙事片段。
+
+# 你的角色设定
+\${chat.settings.aiPersona}
+
+# 对话者的角色设定
+\${chat.settings.myPersona}
+
+# 供你参考的信息
+\${chat.settings.enableTimePerception ? \`- **当前时间**: \${currentTime}\` : ''}
+\${worldBookContent}
+
+# 长期记忆
+\${longTermMemory}
+
+# 对话历史
+\${historySlice}
+
+# 输出格式
+\${formatRules}
+
+# 核心规则
+1. **叙事视角**: 严格遵循预设的人称规定。
+2. **字数要求**: 内容应在 \${minLength}到\${maxLength}字之间。
+3. **禁止出戏**: 绝不能透露你是AI。
+
+现在，请根据以上规则继续这场线下互动。`;
+    }
+    return '';
+  }
+
+  /**
+   * 获取当前生效的聊天提示词（优先用户自定义，否则用默认）
+   * @param {string} chatType - 聊天类型：'single'单聊, 'group'群聊, 'offline'线下模式
+   * @returns {string|null} - 自定义提示词内容，如果返回null则使用默认
+   */
+  function getActiveChatPrompt(chatType) {
+    if (!state.globalSettings.customChatPromptEnabled) {
+      return null; // 未启用自定义，使用默认
+    }
+    
+    let customPrompt = '';
+    switch(chatType) {
+      case 'single':
+        customPrompt = state.globalSettings.customChatPromptSingle;
+        break;
+      case 'group':
+        customPrompt = state.globalSettings.customChatPromptGroup;
+        break;
+      case 'offline':
+        customPrompt = state.globalSettings.customChatPromptOffline;
+        break;
+      default:
+        return null;
+    }
+    
+    // 如果自定义提示词存在且不为空，并且不等于默认提示词，返回它
+    // 这样用户可以看到默认提示词但不会被当作自定义
+    const defaultPrompt = getDefaultChatPrompt(chatType);
+    if (customPrompt && customPrompt.trim() && customPrompt !== defaultPrompt) {
+      return customPrompt;
+    }
+    
+    return null; // 否则使用默认
+  }
+
+  /**
    * 根据用户设置处理提示词
    * @param {string} originalPrompt - 原始的完整提示词
-   * @param {string} chatType - 聊天类型：'single'单聊, 'group'群聊, 'spectator'旁观
+   * @param {string} chatType - 聊天类型：'single'单聊, 'group'群聊, 'spectator'旁观, 'offline'线下模式
    * @returns {string} - 处理后的提示词
    */
   function processPromptWithSettings(originalPrompt, chatType = 'single') {
-    // 使用原始提示词
-    return originalPrompt;
+    let processedPrompt = originalPrompt;
+    
+    // 检查是否启用了自定义聊天提示词
+    if (state.globalSettings.customChatPromptEnabled) {
+      const customPrompt = getActiveChatPrompt(chatType);
+      if (customPrompt) {
+        // 使用自定义提示词完全替换原始提示词
+        processedPrompt = customPrompt;
+      }
+    }
+    
+    // 仅对单聊应用多条回复设置
+    if (chatType === 'single') {
+      const chat = state.chats[state.activeChatId];
+      if (chat && chat.settings.enableMultiReply) {
+        const minCount = chat.settings.minReplyCount || 2;
+        const maxCount = chat.settings.maxReplyCount || 5;
+        
+        // 动态注入回复条数指令
+        const multiReplyInstruction = `\n\n# 【回复条数控制】\n你每次回复时，必须发送 ${minCount}-${maxCount} 条消息。根据当前情绪和话题的复杂度，在这个范围内灵活选择具体条数。每条消息保持简短自然，像真人聊天一样。禁止每次都发送相同条数。\n`;
+        
+        // 在最高指令后面注入（替换原有的"根据情绪和话题决定发送的消息条数"部分）
+        processedPrompt = processedPrompt.replace(
+          /每次回复像真实聊天一样,根据情绪和话题决定发送的消息条数，禁止每次回复相同条数，拆分为短句/g,
+          `每次回复必须发送${minCount}-${maxCount}条消息，根据情绪和话题在此范围内灵活选择，拆分为短句`
+        );
+        
+        // 如果没有匹配到，则在开头注入
+        if (processedPrompt === originalPrompt) {
+          processedPrompt = multiReplyInstruction + processedPrompt;
+        }
+      }
+    }
+    
+    return processedPrompt;
   }
 
 // ========== 提示词处理函数结束 ==========
@@ -490,6 +745,127 @@
       e.target.value = '';
     });
 
+    // 新增：读取自定义聊天提示词设置
+    const customChatPromptSwitch = document.getElementById('custom-chat-prompt-switch');
+    const customChatPromptContainer = document.getElementById('custom-chat-prompt-container');
+    const customChatPromptSingleTextarea = document.getElementById('custom-chat-prompt-single-textarea');
+    const customChatPromptGroupTextarea = document.getElementById('custom-chat-prompt-group-textarea');
+    const customChatPromptOfflineTextarea = document.getElementById('custom-chat-prompt-offline-textarea');
+    
+    customChatPromptSwitch.checked = state.globalSettings.customChatPromptEnabled || false;
+    customChatPromptContainer.style.display = customChatPromptSwitch.checked ? 'block' : 'none';
+    
+    // 初始化时填充默认提示词（如果用户没有自定义）
+    customChatPromptSingleTextarea.value = state.globalSettings.customChatPromptSingle || getDefaultChatPrompt('single');
+    customChatPromptGroupTextarea.value = state.globalSettings.customChatPromptGroup || getDefaultChatPrompt('group');
+    customChatPromptOfflineTextarea.value = state.globalSettings.customChatPromptOffline || getDefaultChatPrompt('offline');
+    
+    customChatPromptSwitch.addEventListener('change', function() {
+      customChatPromptContainer.style.display = this.checked ? 'block' : 'none';
+      // 开启时，如果文本框为空，填充默认提示词
+      if (this.checked) {
+        if (!customChatPromptSingleTextarea.value.trim()) {
+          customChatPromptSingleTextarea.value = getDefaultChatPrompt('single');
+        }
+        if (!customChatPromptGroupTextarea.value.trim()) {
+          customChatPromptGroupTextarea.value = getDefaultChatPrompt('group');
+        }
+        if (!customChatPromptOfflineTextarea.value.trim()) {
+          customChatPromptOfflineTextarea.value = getDefaultChatPrompt('offline');
+        }
+      }
+    });
+    
+    // 单聊提示词 - 恢复默认
+    document.getElementById('reset-chat-prompt-single-btn').addEventListener('click', function() {
+      customChatPromptSingleTextarea.value = getDefaultChatPrompt('single');
+      showToast('已恢复单聊默认提示词');
+    });
+    
+    // 群聊提示词 - 恢复默认
+    document.getElementById('reset-chat-prompt-group-btn').addEventListener('click', function() {
+      customChatPromptGroupTextarea.value = getDefaultChatPrompt('group');
+      showToast('已恢复群聊默认提示词');
+    });
+    
+    // 线下模式提示词 - 恢复默认
+    document.getElementById('reset-chat-prompt-offline-btn').addEventListener('click', function() {
+      customChatPromptOfflineTextarea.value = getDefaultChatPrompt('offline');
+      showToast('已恢复线下模式默认提示词');
+      showToast('已清空线下模式提示词，将使用默认提示词');
+    });
+    
+    // 聊天提示词 - 导出（导出所有三种）
+    document.getElementById('export-chat-prompt-btn').addEventListener('click', function() {
+      const data = {
+        type: 'chat_prompts',
+        single: customChatPromptSingleTextarea.value || '',
+        group: customChatPromptGroupTextarea.value || '',
+        offline: customChatPromptOfflineTextarea.value || ''
+      };
+      const dataStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '聊天提示词.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+    
+    // 聊天提示词 - 导入
+    document.getElementById('import-chat-prompt-btn').addEventListener('click', function() {
+      document.getElementById('import-chat-prompt-file').click();
+    });
+    document.getElementById('import-chat-prompt-file').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        try {
+          const data = JSON.parse(ev.target.result);
+          if (data.type === 'chat_prompts') {
+            if (data.single !== undefined) customChatPromptSingleTextarea.value = data.single;
+            if (data.group !== undefined) customChatPromptGroupTextarea.value = data.group;
+            if (data.offline !== undefined) customChatPromptOfflineTextarea.value = data.offline;
+            showToast('聊天提示词导入成功');
+          } else {
+            showToast('文件格式不正确');
+          }
+        } catch (err) {
+          showToast('导入失败：文件格式错误');
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    });
+
+    // 新增：聊天提示词标签页切换
+    const chatPromptTabs = document.querySelectorAll('.custom-chat-prompt-tab');
+    const chatPromptContents = document.querySelectorAll('.custom-chat-prompt-tab-content');
+    
+    chatPromptTabs.forEach(tab => {
+      tab.addEventListener('click', function() {
+        const targetTab = this.getAttribute('data-tab');
+        
+        // 更新标签样式
+        chatPromptTabs.forEach(t => {
+          t.classList.remove('active');
+          t.style.borderBottomColor = 'transparent';
+          t.style.color = 'var(--text-secondary, #8e8e93)';
+        });
+        this.classList.add('active');
+        this.style.borderBottomColor = 'var(--primary-color, #007aff)';
+        this.style.color = 'var(--primary-color, #007aff)';
+        
+        // 切换内容
+        chatPromptContents.forEach(content => {
+          const contentTab = content.getAttribute('data-content');
+          content.style.display = contentTab === targetTab ? 'block' : 'none';
+        });
+      });
+    });
+
     document.getElementById('global-enable-view-myphone-switch').checked = state.globalSettings.enableViewMyPhone || false;
     document.getElementById('global-enable-cross-chat-switch').checked = state.globalSettings.enableCrossChat !== false; // 默认开启
 
@@ -512,6 +888,13 @@
     if (safeRenderSwitch) {
       safeRenderSwitch.checked = state.globalSettings.safeRenderMode || false;
     }
+    
+    // 加载悬浮球开关状态
+    const floatingBallSwitch = document.getElementById('floating-ball-switch');
+    if (floatingBallSwitch) {
+      floatingBallSwitch.checked = state.globalSettings.floatingBallEnabled === true; // 默认关闭
+    }
+    
     const savedMinimaxGroupId = localStorage.getItem('minimax-group-id');
     const savedMinimaxApiKey = localStorage.getItem('minimax-api-key');
     const savedMinimaxModel = localStorage.getItem('minimax-model');

@@ -4292,9 +4292,9 @@ ${email.content}
         <div><label style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;display:block;">内容</label>
         <textarea id="edit-diary-content-input" rows="10" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ccc;font-size:15px;box-sizing:border-box;resize:vertical;line-height:1.6;">${escapedContent}</textarea></div>
       </div>`;
-    modalResolve = null;
-    modalTitle.textContent = '编辑日记';
-    modalBody.innerHTML = formHtml;
+    window._modalResolve = null;
+    window._modalTitle.textContent = '编辑日记';
+    window._modalBody.innerHTML = formHtml;
     const modalFooter = document.querySelector('#custom-modal .custom-modal-footer');
     if (modalFooter) {
       modalFooter.style.flexDirection = 'row';

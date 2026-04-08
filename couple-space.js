@@ -1178,8 +1178,7 @@ async function triggerAutoDiaryWrite(charId) {
       userName: chat.settings.myNickname || '我'
     });
 
-    // Save directly to localStorage (不通过iframe，因为用户可能不在情侣空间页面)
-    const diaries = JSON.parse(localStorage.getItem('coupleDiaries_' + charId) || '[]');
+    // 只通知iframe，由iframe负责保存（避免重复保存）
     const newDiary = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       author: 'char',
@@ -1189,12 +1188,9 @@ async function triggerAutoDiaryWrite(charId) {
       timestamp: Date.now(),
       comments: []
     };
-    diaries.push(newDiary);
-    localStorage.setItem('coupleDiaries_' + charId, JSON.stringify(diaries));
 
     console.log('Auto diary written for', chat.name, ':', result.title);
 
-    // If iframe is open and showing this char, notify it to refresh
     const iframe = document.getElementById('couple-space-iframe');
     if (iframe && iframe.contentWindow) {
       try {
@@ -1563,9 +1559,8 @@ async function triggerAutoAlbumPost(charId) {
       } catch(e) {}
     }
 
-    // Save directly to localStorage
-    const photos = JSON.parse(localStorage.getItem('coupleAlbum_' + charId) || '[]');
-    photos.push({
+    // 只通知iframe，由iframe负责保存（避免重复保存）
+    const newPhoto = {
       id: 'ap_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
       author: 'char',
       timestamp: Date.now(),
@@ -1574,18 +1569,13 @@ async function triggerAutoAlbumPost(charId) {
       type: imageData ? 'ai_gen' : 'text',
       tags: result.tags || [],
       imagePrompt: result.imagePrompt || ''
-    });
-    localStorage.setItem('coupleAlbum_' + charId, JSON.stringify(photos));
+    };
 
-    // Notify iframe if open
     const iframe = document.getElementById('couple-space-iframe');
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage({
         type: 'coupleSpaceAlbumAutoResult',
-        description: result.description,
-        imageData: imageData,
-        imagePrompt: result.imagePrompt,
-        tags: result.tags || []
+        photo: newPhoto
       }, '*');
     }
   } catch(err) {
@@ -1796,18 +1786,7 @@ ${existingList}
         annivType: result.type || 'custom',
         reason: result.reason || ''
       }, '*');
-      // Also save to localStorage
-      existingAnnivs.push({
-        id: 'ann_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-        title: result.title,
-        date: result.date,
-        type: result.type || 'custom',
-        reason: result.reason || '',
-        author: 'char',
-        hearts: { char: true },
-        createdAt: Date.now()
-      });
-      localStorage.setItem('coupleAnniv_' + data.charId, JSON.stringify(existingAnnivs));
+      // 只通知iframe，由iframe负责保存（避免重复保存）
     } else {
       iframe.contentWindow.postMessage({ type: 'coupleSpaceAnnivCreateResult', error: true }, '*');
     }
@@ -1937,18 +1916,7 @@ ${existingList}
           reason: result.reason || ''
         }, '*');
       }
-      // Also save directly
-      existingAnnivs.push({
-        id: 'ann_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-        title: result.title,
-        date: result.date,
-        type: result.type || 'custom',
-        reason: result.reason || '',
-        author: 'char',
-        hearts: { char: true },
-        createdAt: Date.now()
-      });
-      localStorage.setItem('coupleAnniv_' + charId, JSON.stringify(existingAnnivs));
+      // 只通知iframe，由iframe负责保存（避免重复保存）
     }
   } catch(e) {
     console.error('Anniv discovery error:', e);
@@ -2292,9 +2260,7 @@ async function triggerAutoChecklistRecommend(charId) {
       comments: []
     };
 
-    existingItems.push(newItem);
-    localStorage.setItem('coupleChecklist_' + charId, JSON.stringify(existingItems));
-
+    // 只通知iframe，由iframe负责保存（避免重复保存）
     const iframe = document.getElementById('couple-space-iframe');
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage({
@@ -2646,9 +2612,7 @@ async function triggerAutoMessagePost(charId) {
       comments: []
     };
 
-    existingMessages.push(newMsg);
-    localStorage.setItem('coupleMessages_' + charId, JSON.stringify(existingMessages));
-
+    // 只通知iframe，由iframe负责保存（避免重复保存）
     const iframe = document.getElementById('couple-space-iframe');
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage({
@@ -2953,8 +2917,7 @@ async function triggerAutoMoodPost(charId) {
       hearts: { char: true },
       comments: []
     };
-    existingMoods.push(newMood);
-    localStorage.setItem('coupleMoods_' + charId, JSON.stringify(existingMoods));
+    // 只通知iframe，由iframe负责保存（避免重复保存）
     const iframe = document.getElementById('couple-space-iframe');
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage({ type: 'coupleSpaceMoodAutoResult', item: newMood }, '*');
@@ -3300,9 +3263,7 @@ async function triggerAutoTimelinePost(charId) {
       comments: []
     };
 
-    existingItems.push(newItem);
-    localStorage.setItem('coupleTimeline_' + charId, JSON.stringify(existingItems));
-
+    // 只通知iframe，由iframe负责保存（避免重复保存）
     const iframe = document.getElementById('couple-space-iframe');
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage({
@@ -3700,8 +3661,7 @@ async function triggerAutoLetterPost(charId) {
       hearts: { char: true },
       comments: []
     };
-    existingLetters.push(newLetter);
-    localStorage.setItem('coupleLetters_' + charId, JSON.stringify(existingLetters));
+    // 只通知iframe，由iframe负责保存（避免重复保存）
     const iframe = document.getElementById('couple-space-iframe');
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage({ type: 'coupleSpaceLetterAutoResult', item: newLetter }, '*');
@@ -4405,12 +4365,7 @@ async function triggerAutoGardenWater(charId) {
       hearts: { char: true },
       comments: []
     };
-    waterLogs.push(newWater);
-    gardenData.waterLogs = waterLogs;
-    localStorage.setItem('coupleGarden_' + charId, JSON.stringify(gardenData));
-
-    // Reward character wallet
-    // The iframe will calculate the reward and send coupleSpaceGardenWaterReward
+    // 只通知iframe，由iframe负责保存（避免重复保存）
     const iframe = document.getElementById('couple-space-iframe');
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage({ type: 'coupleSpaceGardenAutoResult', item: newWater }, '*');
@@ -4711,8 +4666,7 @@ async function triggerAutoLocationPost(charId) {
       hearts: { char: true },
       comments: []
     };
-    existingLocations.push(newLoc);
-    localStorage.setItem('coupleLocations_' + charId, JSON.stringify(existingLocations));
+    // 只通知iframe，由iframe负责保存（避免重复保存）
     const iframe = document.getElementById('couple-space-iframe');
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage({ type: 'coupleSpaceLocationAutoResult', item: newLoc }, '*');
@@ -5183,8 +5137,7 @@ async function triggerAutoSleepPost(charId, phase) {
         hearts: { char: true },
         comments: []
       };
-      existingSleeps.push(newSleep);
-      localStorage.setItem('coupleSleep_' + charId, JSON.stringify(existingSleeps));
+      // 只通知iframe，由iframe负责保存（避免重复保存）
       const iframe = document.getElementById('couple-space-iframe');
       if (iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage({ type: 'coupleSpaceSleepAutoResult', phase: 'sleep', item: newSleep }, '*');
@@ -5233,11 +5186,10 @@ async function triggerAutoSleepPost(charId, phase) {
         if (wakeMs > sleepMs) currentSleep.duration = Math.round((wakeMs - sleepMs) / 60000);
       } catch(e) {}
 
-      existingSleeps[sleepingIdx.i] = currentSleep;
-      localStorage.setItem('coupleSleep_' + charId, JSON.stringify(existingSleeps));
+      // 只通知iframe，由iframe负责保存（避免重复保存）
       const iframe = document.getElementById('couple-space-iframe');
       if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage({ type: 'coupleSpaceSleepAutoResult', phase: 'wake', item: currentSleep }, '*');
+        iframe.contentWindow.postMessage({ type: 'coupleSpaceSleepAutoResult', phase: 'wake', item: currentSleep, sleepIndex: sleepingIdx.i }, '*');
       }
     }
   } catch(err) {
@@ -5585,8 +5537,7 @@ async function triggerAutoFinancePost(charId) {
       hearts: { char: true },
       comments: []
     };
-    existingItems.push(newItem);
-    localStorage.setItem('coupleFinance_' + charId, JSON.stringify(existingItems));
+    // 只通知iframe，由iframe负责保存（避免重复保存）
     const iframe = document.getElementById('couple-space-iframe');
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage({ type: 'coupleSpaceFinanceAutoResult', item: newItem }, '*');

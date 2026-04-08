@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // init-event-bindingsA.js
 // 事件绑定A：init() 函数前半段
 // 从 init-and-state.js 约 2569~6030 行拆分
@@ -1115,6 +1115,12 @@ window.initEventBindingsA = async function(state, db) {
 
       document.getElementById('offline-mode-options').style.display = e.target.checked ? 'block' : 'none';
     });
+    
+    // 连续回复开关事件（回复条数范围）
+    document.getElementById('enable-reply-count-range-toggle').addEventListener('change', (e) => {
+      document.getElementById('reply-count-range-config').style.display = e.target.checked ? 'block' : 'none';
+    });
+    
     document.getElementById('import-btn').addEventListener('click', () => document.getElementById('import-data-input').click());
     document.getElementById('time-perception-toggle').addEventListener('change', (e) => {
       document.getElementById('time-zone-group').style.display = e.target.checked ? 'block' : 'none';
@@ -2011,12 +2017,29 @@ window.initEventBindingsA = async function(state, db) {
       state.globalSettings.blockCooldownHours = parseFloat(cooldownInput.value) || 1;
       state.globalSettings.enableAiDrawing = document.getElementById('enable-ai-drawing-switch').checked;
 
+      // 保存悬浮球开关
+      const floatingBallSwitch = document.getElementById('floating-ball-switch');
+      if (floatingBallSwitch) {
+        const newFloatingBallEnabled = floatingBallSwitch.checked;
+        const oldFloatingBallEnabled = state.globalSettings.floatingBallEnabled;
+        state.globalSettings.floatingBallEnabled = newFloatingBallEnabled;
+        
+        // 如果状态改变，更新悬浮球
+        if (oldFloatingBallEnabled !== newFloatingBallEnabled && typeof toggleFloatingBall === 'function') {
+          toggleFloatingBall(newFloatingBallEnabled);
+        }
+      }
+
       // 新增：保存心声和动态功能开关
       state.globalSettings.enableThoughts = document.getElementById('global-enable-thoughts-switch').checked;
       state.globalSettings.customThoughtsPromptEnabled = document.getElementById('custom-thoughts-prompt-switch').checked;
       state.globalSettings.customThoughtsPrompt = document.getElementById('custom-thoughts-prompt-textarea').value;
       state.globalSettings.customSummaryPromptEnabled = document.getElementById('custom-summary-prompt-switch').checked;
       state.globalSettings.customSummaryPrompt = document.getElementById('custom-summary-prompt-textarea').value;
+      state.globalSettings.customChatPromptEnabled = document.getElementById('custom-chat-prompt-switch').checked;
+      state.globalSettings.customChatPromptSingle = document.getElementById('custom-chat-prompt-single-textarea').value;
+      state.globalSettings.customChatPromptGroup = document.getElementById('custom-chat-prompt-group-textarea').value;
+      state.globalSettings.customChatPromptOffline = document.getElementById('custom-chat-prompt-offline-textarea').value;
       state.globalSettings.enableQzoneActions = document.getElementById('global-enable-qzone-actions-switch').checked;
       state.globalSettings.enableViewMyPhone = document.getElementById('global-enable-view-myphone-switch').checked;
       state.globalSettings.enableCrossChat = document.getElementById('global-enable-cross-chat-switch').checked;
@@ -2202,6 +2225,14 @@ window.initEventBindingsA = async function(state, db) {
       const selectedModel = e.target.value;
       if (selectedModel) {
         document.getElementById('vision-model-input').value = selectedModel;
+      }
+    });
+
+    // 监听情侣空间模型下拉框变化，自动填入手写框
+    document.getElementById('couplespace-model-select').addEventListener('change', (e) => {
+      const selectedModel = e.target.value;
+      if (selectedModel) {
+        document.getElementById('couplespace-model-input').value = selectedModel;
       }
     });
 
@@ -3078,6 +3109,23 @@ window.initEventBindingsA = async function(state, db) {
         document.getElementById('global-view-myphone-status').textContent = state.globalSettings.enableViewMyPhone ? '开启' : '关闭';
         document.getElementById('global-cross-chat-status').textContent = state.globalSettings.enableCrossChat !== false ? '开启' : '关闭';
 
+        // 读取回复条数范围设置（仅单聊）
+        if (!isGroup) {
+          const replyCountRangeGroup = document.getElementById('reply-count-range-group');
+          const replyCountRangeConfig = document.getElementById('reply-count-range-config');
+          const enableReplyCountRangeToggle = document.getElementById('enable-reply-count-range-toggle');
+          
+          replyCountRangeGroup.style.display = 'flex';
+          enableReplyCountRangeToggle.checked = chat.settings.enableMultiReply || false;
+          replyCountRangeConfig.style.display = enableReplyCountRangeToggle.checked ? 'block' : 'none';
+          
+          document.getElementById('min-reply-count-input').value = chat.settings.minReplyCount || 2;
+          document.getElementById('max-reply-count-input').value = chat.settings.maxReplyCount || 5;
+        } else {
+          document.getElementById('reply-count-range-group').style.display = 'none';
+          document.getElementById('reply-count-range-config').style.display = 'none';
+        }
+
         const offlineModeToggle = document.getElementById('offline-mode-toggle');
         const offlineModeOptions = document.getElementById('offline-mode-options');
         const offlineMinInput = document.getElementById('offline-min-length-input');
@@ -3638,6 +3686,13 @@ window.initEventBindingsA = async function(state, db) {
           chat.settings.enableCrossChat = null;
         } else {
           chat.settings.enableCrossChat = crossChatValue === 'true';
+        }
+
+        // 保存回复条数范围设置（仅单聊）
+        if (!chat.isGroup) {
+          chat.settings.enableMultiReply = document.getElementById('enable-reply-count-range-toggle').checked;
+          chat.settings.minReplyCount = parseInt(document.getElementById('min-reply-count-input').value) || 2;
+          chat.settings.maxReplyCount = parseInt(document.getElementById('max-reply-count-input').value) || 5;
         }
 
         chat.settings.offlineMinLength = parseInt(document.getElementById('offline-min-length-input').value) || 100;

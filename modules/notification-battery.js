@@ -712,36 +712,44 @@
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    // 根据布局方式设置canvas大小
+    // 根据屏幕宽度计算缩放比例（移动端适配）
+    const screenWidth = window.innerWidth;
+    const isMobile = screenWidth < 768;
+    const scaleFactor = isMobile ? Math.max(0.5, screenWidth / 768) : 1;
+    
+    // 根据布局方式设置canvas大小（移动端自适应）
     let canvasWidth, canvasHeight;
     switch (watermarkConfig.layout) {
       case 'diagonal':
-        canvasWidth = 400;
-        canvasHeight = 200;
+        canvasWidth = Math.round(400 * scaleFactor);
+        canvasHeight = Math.round(200 * scaleFactor);
         break;
       case 'grid':
-        canvasWidth = 300;
-        canvasHeight = 150;
+        canvasWidth = Math.round(300 * scaleFactor);
+        canvasHeight = Math.round(150 * scaleFactor);
         break;
       case 'sparse':
-        canvasWidth = 600;
-        canvasHeight = 300;
+        canvasWidth = Math.round(600 * scaleFactor);
+        canvasHeight = Math.round(300 * scaleFactor);
         break;
       case 'dense':
-        canvasWidth = 250;
-        canvasHeight = 125;
+        canvasWidth = Math.round(250 * scaleFactor);
+        canvasHeight = Math.round(125 * scaleFactor);
         break;
       default:
-        canvasWidth = 400;
-        canvasHeight = 200;
+        canvasWidth = Math.round(400 * scaleFactor);
+        canvasHeight = Math.round(200 * scaleFactor);
     }
 
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
 
+    // 计算自适应字体大小
+    const adaptiveFontSize = Math.round(watermarkConfig.fontSize * scaleFactor);
+
     // 绘制水印文字
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    ctx.font = `${watermarkConfig.fontSize}px ${watermarkConfig.fontFamily}`;
+    ctx.font = `${adaptiveFontSize}px ${watermarkConfig.fontFamily}`;
     ctx.fillStyle = watermarkConfig.color;
     ctx.globalAlpha = watermarkConfig.opacity;
     ctx.textAlign = 'center';
@@ -943,6 +951,17 @@
     loadWatermarkSettings();
     bindWatermarkEvents();
   }, 500);
+
+  // 监听窗口大小变化，重新创建水印层（移动端旋转屏幕适配）
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    if (watermarkConfig.enabled) {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        createWatermarkLayer();
+      }, 300);
+    }
+  });
 
   // ========== 截图水印功能结束 ==========
 

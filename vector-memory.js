@@ -40,12 +40,17 @@ class VectorMemoryManager {
           enableEmotionTrigger: true,
           enableTopicTrigger: true,
           enablePeriodicReview: true,
-          reviewIntervalDays: 7
+          reviewIntervalDays: 7,
+          retrievalStrategy: 'user-only',
+          retrievalUserMsgCount: 3,
+          retrievalCacheEnabled: true,
+          retrievalCacheInterval: 3
         },
         lastExtractionTimestamp: 0,
         lastReviewTimestamp: 0,
         _customCategories: {},
-        stats: { totalFragments: 0, totalRecalls: 0, lastUpdated: 0 }
+        stats: { totalFragments: 0, totalRecalls: 0, lastUpdated: 0 },
+        _retrievalCache: { query: '', result: null, timestamp: 0, msgCount: 0 }
       };
     }
     // 兼容旧数据
@@ -57,6 +62,12 @@ class VectorMemoryManager {
     if (!vm.settings.scoreWeights) vm.settings.scoreWeights = { semantic: 0.4, keyword: 0.3, importance: 0.15, emotion: 0.1, recency: 0.05 };
     if (!vm._customCategories) vm._customCategories = {};
     if (!vm.stats) vm.stats = { totalFragments: 0, totalRecalls: 0, lastUpdated: 0 };
+    // 新增配置项的默认值
+    if (!vm.settings.retrievalStrategy) vm.settings.retrievalStrategy = 'user-only';
+    if (!vm.settings.retrievalUserMsgCount) vm.settings.retrievalUserMsgCount = 3;
+    if (vm.settings.retrievalCacheEnabled === undefined) vm.settings.retrievalCacheEnabled = true;
+    if (!vm.settings.retrievalCacheInterval) vm.settings.retrievalCacheInterval = 3;
+    if (!vm._retrievalCache) vm._retrievalCache = { query: '', result: null, timestamp: 0, msgCount: 0 };
     return vm;
   }
 
@@ -114,6 +125,7 @@ class VectorMemoryManager {
       importance: data.importance || 5,
       emotionalWeight: data.emotionalWeight || 3,
       createdAt: data.createdAt || Date.now(),
+      dialogueTimeRange: data.dialogueTimeRange || null, // 对话时间范围 { start: timestamp, end: timestamp }
       lastRecalled: 0,
       recallCount: 0,
       embedding: data.embedding || null,
@@ -274,6 +286,30 @@ class VectorMemoryManager {
     const vm = this.getVectorMemory(chat);
     if (!vm.fragments.length) return [];
     if (!topN) topN = vm.settings.topN || 8;
+    
+    // 检索缓存机制
+    if (vm.settings.retrievalCacheEnabled && vm._retrievalCache) {
+      const cache = vm._retrievalCache;
+      const now = Date.now();
+      const cacheAge = (now - cache.timestamp) / 1000 / 60; // 分钟
+      const msgCountDiff = (chat.history?.length || 0) - cache.msgCount;
+      
+      // 如果query相同，且缓存未过期（10分钟），且新消息数少于设置的间隔，使用缓存
+      if (cache.query === queryText && 
+          cacheAge < 10 && 
+          msgCountDiff < (vm.settings.retrievalCacheInterval || 3) &&
+          cache.result) {
+        console.log('[向量记忆] 使用检索缓存');
+        // 更新召回统计
+        for (const r of cache.result) {
+          r.fragment.lastRecalled = Date.now();
+          r.fragment.recallCount = (r.fragment.recallCount || 0) + 1;
+        }
+        vm.stats.totalRecalls++;
+        return cache.result;
+      }
+    }
+    
     const weights = vm.settings.scoreWeights;
 
     // 通道A：语义检索
@@ -332,6 +368,16 @@ class VectorMemoryManager {
       r.fragment.recallCount = (r.fragment.recallCount || 0) + 1;
     }
     vm.stats.totalRecalls++;
+    
+    // 更新缓存
+    if (vm.settings.retrievalCacheEnabled) {
+      vm._retrievalCache = {
+        query: queryText,
+        result: results,
+        timestamp: Date.now(),
+        msgCount: chat.history?.length || 0
+      };
+    }
 
     return results;
   }
@@ -411,7 +457,14 @@ class VectorMemoryManager {
         output += '## 相关记忆\n';
         for (const r of results) {
           const cat = this.CATEGORIES[r.fragment.category] || { icon: '-' };
-          const dateStr = new Date(r.fragment.createdAt).toLocaleDateString('zh-CN');
+          // 优先显示对话时间，降级显示总结时间
+          let dateStr = '';
+          if (r.fragment.dialogueTimeRange && r.fragment.dialogueTimeRange.start) {
+            const formatted = this._formatDialogueTimeRange(r.fragment.dialogueTimeRange);
+            dateStr = formatted ? formatted.short : new Date(r.fragment.createdAt).toLocaleDateString('zh-CN');
+          } else {
+            dateStr = new Date(r.fragment.createdAt).toLocaleDateString('zh-CN');
+          }
           output += `[${cat.icon}] ${r.fragment.content} (${dateStr})\n`;
         }
         output += '\n';
@@ -442,9 +495,12 @@ ${output}`;
 
   // ==================== AI 提取记忆 ====================
 
-  buildExtractionPrompt(chat, formattedHistory, timeRangeStr) {
+  buildExtractionPrompt(chat, formattedHistory, timeRangeStr, dialogueTimeRange) {
     const vm = this.getVectorMemory(chat);
     const userNickname = chat.settings.myNickname || (window.state?.qzoneSettings?.nickname || '用户');
+
+    // 保存对话时间范围供后续使用
+    this._lastDialogueTimeRange = dialogueTimeRange;
 
     let summarySettingContext = '';
     if (window.state && window.state.worldBooks) {
@@ -560,6 +616,10 @@ ${formattedHistory}
   async mergeExtractedMemories(chat, extractedItems) {
     const vm = this.getVectorMemory(chat);
     const newIds = [];
+    
+    // 获取对话时间范围（从上次提取时保存的）
+    const dialogueTimeRange = this._lastDialogueTimeRange || null;
+    
     for (const item of extractedItems) {
       // 去重：检查是否已有非常相似的记忆
       const isDuplicate = vm.fragments.some(f => {
@@ -579,7 +639,8 @@ ${formattedHistory}
         emotionalWeight: item.emotionalWeight,
         embedding,
         source: 'auto',
-        context: item.context
+        context: item.context,
+        dialogueTimeRange: dialogueTimeRange // 添加对话时间范围
       });
       newIds.push(id);
     }
@@ -624,7 +685,8 @@ ${formattedHistory}
       coreMemories: vm.coreMemories,
       fragments: vm.fragments.map(f => ({
         ...f,
-        embedding: null // 导出时不包含embedding，导入时重新生成
+        embedding: null, // 导出时不包含embedding，导入时重新生成
+        dialogueTimeRange: f.dialogueTimeRange || null // 保留对话时间范围
       })),
       timelineSummaries: vm.timelineSummaries,
       settings: vm.settings,
@@ -672,7 +734,8 @@ ${formattedHistory}
             embedding,
             linkedMemories: [],
             source: 'import',
-            context: frag.context || ''
+            context: frag.context || '',
+            dialogueTimeRange: frag.dialogueTimeRange || null // 保留对话时间范围
           });
           imported++;
         }
@@ -705,16 +768,64 @@ ${formattedHistory}
     }
     const embeddedCount = frags.filter(f => f.embedding).length;
     const avgImportance = frags.length > 0 ? (frags.reduce((s, f) => s + (f.importance || 5), 0) / frags.length).toFixed(1) : 0;
+    
+    // 计算待提取消息数
+    const lastTimestamp = vm.lastExtractionTimestamp || 0;
+    const unextractedMessages = chat.history ? chat.history.filter(m => 
+      m.timestamp > lastTimestamp && 
+      (!m.isHidden || (m.role === 'system' && m.content && m.content.includes('内心独白')))
+    ).length : 0;
+    
+    // 自动提取间隔
+    const autoInterval = chat.settings?.autoMemoryInterval || 20;
+    const remainingToAuto = Math.max(0, autoInterval - unextractedMessages);
+    
+    // 上次提取时间
+    const lastExtractionTime = lastTimestamp > 0 ? this._formatTimeAgo(Date.now() - lastTimestamp) : '从未';
+    
+    // 向量化健康度
+    let embeddingHealth = 'unknown';
+    if (frags.length === 0) {
+      embeddingHealth = 'empty';
+    } else if (embeddedCount === frags.length) {
+      embeddingHealth = 'perfect';
+    } else if (embeddedCount > frags.length * 0.8) {
+      embeddingHealth = 'good';
+    } else if (embeddedCount > 0) {
+      embeddingHealth = 'partial';
+    } else {
+      embeddingHealth = 'failed';
+    }
+    
     return {
       totalFragments: frags.length,
       coreMemories: (vm.coreMemories || []).length,
       embeddedCount,
+      embeddingPercent: frags.length > 0 ? Math.round(embeddedCount / frags.length * 100) : 0,
+      embeddingHealth,
       categoryCounts: catCounts,
       avgImportance,
       totalRecalls: vm.stats.totalRecalls || 0,
       lastUpdated: vm.stats.lastUpdated || 0,
-      estimatedTokens: this.estimateTokens(chat)
+      estimatedTokens: this.estimateTokens(chat),
+      topN: vm.settings.topN || 8,
+      unextractedMessages,
+      autoInterval,
+      remainingToAuto,
+      lastExtractionTime
     };
+  }
+  
+  _formatTimeAgo(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}天前`;
+    if (hours > 0) return `${hours}小时前`;
+    if (minutes > 0) return `${minutes}分钟前`;
+    return '刚刚';
   }
 
   estimateTokens(chat) {
@@ -774,13 +885,60 @@ ${formattedHistory}
     // 统计栏
     const statsBar = document.createElement('div');
     statsBar.className = 'vm-stats';
+    
+    // 健康度图标
+    const healthIcons = {
+      'perfect': '✓',
+      'good': '✓',
+      'partial': '⚠',
+      'failed': '❌',
+      'empty': '-',
+      'unknown': '?'
+    };
+    const healthColors = {
+      'perfect': '#34c759',
+      'good': '#34c759',
+      'partial': '#ff9500',
+      'failed': '#ff3b30',
+      'empty': '#999',
+      'unknown': '#999'
+    };
+    const healthIcon = healthIcons[stats.embeddingHealth] || '?';
+    const healthColor = healthColors[stats.embeddingHealth] || '#999';
+    
     let statsHtml = '<div class="vm-stats-row">';
-    statsHtml += `<span>核心 ${stats.coreMemories}</span>`;
-    statsHtml += `<span>片段 ${stats.totalFragments}</span>`;
-    statsHtml += `<span>已向量化 ${stats.embeddedCount}</span>`;
+    statsHtml += `<span>核心 ${stats.coreMemories}条</span>`;
+    statsHtml += `<span>片段 ${stats.totalFragments}条</span>`;
+    statsHtml += `<span style="color:${healthColor}">向量化 ${healthIcon} ${stats.embeddedCount}/${stats.totalFragments} (${stats.embeddingPercent}%)</span>`;
+    statsHtml += `<span>每轮注入 ${stats.topN}条</span>`;
     statsHtml += `<span>召回 ${stats.totalRecalls}次</span>`;
-    statsHtml += `<span>≈ ${stats.estimatedTokens} Tokens</span>`;
     statsHtml += '</div>';
+    
+    // 第二行：提取状态
+    if (stats.totalFragments > 0 || stats.unextractedMessages > 0) {
+      statsHtml += '<div class="vm-stats-row" style="margin-top:4px;">';
+      statsHtml += `<span>上次提取 ${stats.lastExtractionTime}</span>`;
+      statsHtml += `<span>待提取 ${stats.unextractedMessages}条</span>`;
+      if (stats.remainingToAuto > 0) {
+        statsHtml += `<span>还差${stats.remainingToAuto}条自动提取</span>`;
+      } else if (stats.unextractedMessages >= stats.autoInterval) {
+        statsHtml += `<span style="color:#ff9500">⚠ 已达自动提取阈值</span>`;
+      }
+      statsHtml += `<span>≈ ${stats.estimatedTokens} tokens/轮</span>`;
+      statsHtml += '</div>';
+    }
+    
+    // 健康提示
+    if (stats.embeddingHealth === 'failed' && stats.totalFragments > 0) {
+      statsHtml += '<div class="vm-stats-row" style="margin-top:4px;">';
+      statsHtml += `<span style="color:#ff3b30;font-weight:500;">❌ 向量化失败，请检查Embedding API配置</span>`;
+      statsHtml += '</div>';
+    } else if (stats.embeddingHealth === 'partial') {
+      statsHtml += '<div class="vm-stats-row" style="margin-top:4px;">';
+      statsHtml += `<span style="color:#ff9500;">⚠ 部分记忆未向量化，建议在设置中重建向量</span>`;
+      statsHtml += '</div>';
+    }
+    
     statsBar.innerHTML = statsHtml;
     container.appendChild(statsBar);
 
@@ -841,7 +999,25 @@ ${formattedHistory}
       frags.forEach(frag => {
         const row = document.createElement('div');
         row.className = 'vm-item-row';
-        const dateStr = new Date(frag.createdAt).toLocaleDateString('zh-CN');
+        
+        // 优先显示对话时间，降级显示总结时间
+        let dateStr = '';
+        let dateTitle = '';
+        let timeIcon = '📅';
+        
+        if (frag.dialogueTimeRange && frag.dialogueTimeRange.start) {
+          const formatted = this._formatDialogueTimeRange(frag.dialogueTimeRange);
+          dateStr = formatted.short;
+          const summaryDate = new Date(frag.createdAt).toLocaleString('zh-CN');
+          dateTitle = `${formatted.full}\n总结时间: ${summaryDate}`;
+          timeIcon = '💬'; // 对话时间用对话图标
+        } else {
+          // 旧数据降级显示总结时间
+          dateStr = new Date(frag.createdAt).toLocaleDateString('zh-CN');
+          dateTitle = `总结时间: ${dateStr}`;
+          timeIcon = '📅'; // 总结时间用日历图标
+        }
+        
         const embIcon = frag.embedding ? 'vec' : '!';
         const tagsStr = (frag.tags || []).slice(0, 4).join(', ');
         row.innerHTML = `
@@ -849,7 +1025,8 @@ ${formattedHistory}
           <div class="vm-item-main">
             <span class="vm-item-content">${this._escapeHtml(frag.content)}</span>
             <div class="vm-item-meta">
-              <span class="vm-meta-tag">${embIcon} ${dateStr}</span>
+              <span class="vm-meta-tag vm-meta-time" title="${dateTitle}">${timeIcon} ${dateStr}</span>
+              <span class="vm-meta-tag">${embIcon}</span>
               <span class="vm-meta-tag">重要度:${frag.importance || 5}</span>
               <span class="vm-meta-tag">情感:${frag.emotionalWeight || 3}</span>
               ${tagsStr ? `<span class="vm-meta-tag">${tagsStr}</span>` : ''}
@@ -885,6 +1062,36 @@ ${formattedHistory}
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+  
+  // 格式化对话时间范围显示
+  _formatDialogueTimeRange(dialogueTimeRange) {
+    if (!dialogueTimeRange || !dialogueTimeRange.start) {
+      return null;
+    }
+    
+    const startDate = new Date(dialogueTimeRange.start);
+    const endDate = new Date(dialogueTimeRange.end);
+    const startStr = startDate.toLocaleDateString('zh-CN');
+    const endStr = endDate.toLocaleDateString('zh-CN');
+    
+    // 如果是同一天，只显示日期和时间范围
+    if (startStr === endStr) {
+      const startTime = startDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+      const endTime = endDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+      return {
+        short: `${startStr} ${startTime}-${endTime}`,
+        full: `对话时间: ${startStr} ${startTime}-${endTime}`
+      };
+    } else {
+      // 跨天显示完整时间
+      const startFull = startDate.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const endFull = endDate.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      return {
+        short: `${startStr} - ${endStr}`,
+        full: `对话时间: ${startFull} - ${endFull}`
+      };
+    }
   }
 
   // ==================== 默认提取提示词模板 ====================
@@ -971,10 +1178,38 @@ ${formattedHistory}
         <div class="vm-settings-group">
           <h4>检索设置</h4>
           <div class="vm-setting-item">
-            <label>每次检索数量 (Top N)</label>
+            <label>每轮对话注入记忆数量 (Top N)</label>
             <input type="number" id="vm-topn" value="${s.topN || 8}" min="1" max="30" class="vm-input">
+            <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:4px;">每次AI回复时，从记忆库中检索最相关的N条记忆注入到上下文。数量越大AI记得越多，但消耗token也越多。建议：记忆少时5-8条，记忆多时10-15条。</div>
           </div>
-          <div class="vm-setting-item">
+          <div class="vm-setting-item" style="margin-top:12px;">
+            <label>检索策略</label>
+            <select id="vm-retrieval-strategy" class="vm-input-full" style="margin-top:4px;">
+              <option value="user-only" ${s.retrievalStrategy === 'user-only' ? 'selected' : ''}>仅用户消息（推荐）</option>
+              <option value="user-weighted" ${s.retrievalStrategy === 'user-weighted' ? 'selected' : ''}>用户消息优先</option>
+              <option value="mixed" ${s.retrievalStrategy === 'mixed' ? 'selected' : ''}>混合模式</option>
+            </select>
+            <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:4px;">
+              <div>• 仅用户消息：只用用户的话作为检索关键词（避免角色连发导致检索偏差）</div>
+              <div>• 用户消息优先：用户消息权重高，角色消息权重低</div>
+              <div>• 混合模式：用户和角色消息混合（兼容旧版）</div>
+            </div>
+          </div>
+          <div class="vm-setting-item" id="vm-user-msg-count-group" style="margin-top:12px;display:${s.retrievalStrategy === 'user-only' ? 'block' : 'none'};">
+            <label>检索用户最近几条消息</label>
+            <input type="number" id="vm-user-msg-count" value="${s.retrievalUserMsgCount || 3}" min="1" max="10" class="vm-input">
+            <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:4px;">用用户最近N条消息作为检索关键词。建议3-5条。</div>
+          </div>
+          <div class="vm-setting-row" style="margin-top:12px;">
+            <span>启用检索缓存</span>
+            <label class="toggle-switch"><input type="checkbox" id="vm-retrieval-cache" ${s.retrievalCacheEnabled ? 'checked' : ''}><span class="slider"></span></label>
+          </div>
+          <div id="vm-cache-interval-group" style="display:${s.retrievalCacheEnabled ? 'block' : 'none'};margin-top:8px;">
+            <label>每N条新消息重新检索</label>
+            <input type="number" id="vm-cache-interval" value="${s.retrievalCacheInterval || 3}" min="1" max="20" class="vm-input">
+            <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:4px;">如果话题没变，可以复用上次检索结果，节省API调用。建议3-5条。</div>
+          </div>
+          <div class="vm-setting-item" style="margin-top:12px;">
             <label>评分权重</label>
             <div class="vm-weights">
               <div><span>语义相似度</span><input type="number" id="vm-w-semantic" value="${s.scoreWeights.semantic}" min="0" max="1" step="0.05" class="vm-input-sm"></div>
@@ -983,6 +1218,7 @@ ${formattedHistory}
               <div><span>情感权重</span><input type="number" id="vm-w-emotion" value="${s.scoreWeights.emotion}" min="0" max="1" step="0.05" class="vm-input-sm"></div>
               <div><span>时间衰减</span><input type="number" id="vm-w-recency" value="${s.scoreWeights.recency}" min="0" max="1" step="0.05" class="vm-input-sm"></div>
             </div>
+            <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:4px;">调整各项权重来控制记忆检索的优先级。总和建议为1.0。</div>
           </div>
         </div>
         <div class="vm-settings-group">
@@ -1009,6 +1245,7 @@ ${formattedHistory}
               <div id="vm-models-list" style="display:none;margin-top:6px;max-height:200px;overflow-y:auto;border:1px solid var(--border-color,#ddd);border-radius:8px;background:var(--card-bg,#fff);"></div>
             </div>
           </div>
+          <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:8px;">如果不配置，将使用主API或副API的embedding接口。如果向量化失败，请检查API是否支持embedding。</div>
         </div>
         <div class="vm-settings-group">
           <h4>主动回忆</h4>
@@ -1055,6 +1292,10 @@ ${formattedHistory}
   saveSettingsFromUI(chat) {
     const vm = this.getVectorMemory(chat);
     vm.settings.topN = parseInt(document.getElementById('vm-topn')?.value) || 8;
+    vm.settings.retrievalStrategy = document.getElementById('vm-retrieval-strategy')?.value || 'user-only';
+    vm.settings.retrievalUserMsgCount = parseInt(document.getElementById('vm-user-msg-count')?.value) || 3;
+    vm.settings.retrievalCacheEnabled = document.getElementById('vm-retrieval-cache')?.checked || false;
+    vm.settings.retrievalCacheInterval = parseInt(document.getElementById('vm-cache-interval')?.value) || 3;
     vm.settings.scoreWeights = {
       semantic: parseFloat(document.getElementById('vm-w-semantic')?.value) || 0.4,
       keyword: parseFloat(document.getElementById('vm-w-keyword')?.value) || 0.3,
@@ -1073,6 +1314,11 @@ ${formattedHistory}
     vm.settings.reviewIntervalDays = parseInt(document.getElementById('vm-review-interval')?.value) || 7;
     vm.settings.useCustomExtractionPrompt = document.getElementById('vm-custom-prompt')?.checked || false;
     vm.settings.customExtractionPrompt = document.getElementById('vm-custom-prompt-text')?.value || '';
+    
+    // 清空检索缓存（因为设置变了）
+    if (vm._retrievalCache) {
+      vm._retrievalCache = { query: '', result: null, timestamp: 0, msgCount: 0 };
+    }
   }
 
   // ==================== 重建所有 Embedding ====================

@@ -456,11 +456,22 @@
     setAvatarActingState(chatId, true);
 
     try {
+      // 获取API配置（优先使用角色独立配置）
+      let apiConfig = state.apiConfig;
+      if (chat.apiOverride && chat.apiOverride.enabled) {
+        apiConfig = {
+          proxyUrl: chat.apiOverride.proxyUrl || state.apiConfig.proxyUrl,
+          apiKey: chat.apiOverride.apiKey || state.apiConfig.apiKey,
+          model: chat.apiOverride.model || state.apiConfig.model
+        };
+      }
+      
       const {
         proxyUrl,
         apiKey,
         model
-      } = state.apiConfig;
+      } = apiConfig;
+      
       if (!proxyUrl || !apiKey || !model) {
         throw new Error('API未配置，无法生成对话。');
       }
@@ -787,11 +798,22 @@ ${stickerContext}
     }
     let needsImmediateReaction = false;
     try {
+      // 获取API配置（优先使用角色独立配置）
+      let apiConfig = state.apiConfig;
+      if (chat.apiOverride && chat.apiOverride.enabled) {
+        apiConfig = {
+          proxyUrl: chat.apiOverride.proxyUrl || state.apiConfig.proxyUrl,
+          apiKey: chat.apiOverride.apiKey || state.apiConfig.apiKey,
+          model: chat.apiOverride.model || state.apiConfig.model
+        };
+      }
+      
       const {
         proxyUrl,
         apiKey,
         model
-      } = state.apiConfig;
+      } = apiConfig;
+      
       if (!proxyUrl || !apiKey || !model) {
         alert('请先在API设置中配置反代地址、密钥并选择模型。');
         if (chat.isGroup) {
@@ -2217,6 +2239,9 @@ ${formatRules}
 
 现在，请根据以上所有规则和对话历史，继续这场线下互动。
 `;
+          // 应用提示词设置
+          systemPrompt = processPromptWithSettings(systemPrompt, 'offline');
+          
           messagesPayload = filteredHistory.map(msg => {
             if (msg.isHidden) return null;
 
@@ -3094,6 +3119,9 @@ ${chat.settings.myAvatarLibrary && chat.settings.myAvatarLibrary.length > 0 ? ch
 现在，作为 **${chat.originalName}**，基于你的人设、记忆和当前情景，生成回复。
 **请严格遵守JSON格式，不要输出任何多余的分析文本。**
 `;
+
+          // 应用提示词设置
+          systemPrompt = processPromptWithSettings(systemPrompt, 'single');
 
           messagesPayload = filteredHistory.map(msg => {
             // 处理系统消息（旁白和系统通知）
@@ -6311,8 +6339,28 @@ ${linkedContents}
       const memoryMode = chat.settings.memoryMode || (chat.settings.enableStructuredMemory ? 'structured' : 'diary');
       if (memoryMode === 'vector' && window.vectorMemoryManager) {
         // 向量记忆模式：异步检索相关记忆
-        const recentMsgs = filteredHistory.slice(-5).map(m => typeof m.content === 'string' ? m.content : '').join(' ');
-        memoryContextForPrompt = await window.vectorMemoryManager.serializeForPrompt(chat, recentMsgs);
+        // 构建检索query：根据用户设置的检索策略
+        const vm = window.vectorMemoryManager.getVectorMemory(chat);
+        const retrievalStrategy = vm.settings.retrievalStrategy || 'user-only';
+        const userMsgCount = vm.settings.retrievalUserMsgCount || 3;
+        
+        let queryText = '';
+        if (retrievalStrategy === 'user-only') {
+          // 只用用户的最近N条消息
+          const userMessages = filteredHistory.filter(m => m.role === 'user').slice(-userMsgCount);
+          queryText = userMessages.map(m => typeof m.content === 'string' ? m.content : '').join(' ');
+        } else if (retrievalStrategy === 'user-weighted') {
+          // 用户消息权重高，角色消息权重低
+          const recentMsgs = filteredHistory.slice(-10);
+          const userMsgs = recentMsgs.filter(m => m.role === 'user').map(m => typeof m.content === 'string' ? m.content : '').join(' ');
+          const aiMsgs = recentMsgs.filter(m => m.role === 'assistant').slice(-2).map(m => typeof m.content === 'string' ? m.content : '').join(' ');
+          queryText = userMsgs + ' ' + aiMsgs;
+        } else {
+          // 混合模式（兼容旧版）
+          queryText = filteredHistory.slice(-5).map(m => typeof m.content === 'string' ? m.content : '').join(' ');
+        }
+        
+        memoryContextForPrompt = await window.vectorMemoryManager.serializeForPrompt(chat, queryText);
       } else if (memoryMode === 'structured' && window.structuredMemoryManager) {
         memoryContextForPrompt = '# 长期记忆 (必须严格遵守)\n' + window.structuredMemoryManager.serializeForPrompt(chat);
       } else {

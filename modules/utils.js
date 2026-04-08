@@ -915,3 +915,33 @@ const updateTokenCountDisplay = debounce(async () => {
     tokenValueEl.textContent = "Error";
   }
 }, 300);
+
+// ============================================================
+// 简易图片放大查看器（独立于相册）
+// ============================================================
+function openSimpleImageZoom(src) {
+  // 1. 检查页面上是否已经有这个遮罩层，没有就创建
+  let overlay = document.getElementById('simple-image-zoom-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'simple-image-zoom-overlay';
+    overlay.innerHTML = '<img src="" alt="Zoomed Image">';
+
+    // 点击遮罩层任意位置关闭
+    overlay.addEventListener('click', () => {
+      overlay.classList.remove('visible');
+      setTimeout(() => { overlay.style.display = 'none'; }, 250);
+    });
+
+    document.body.appendChild(overlay);
+  }
+
+  // 2. 设置图片并显示
+  const img = overlay.querySelector('img');
+  img.src = src;
+
+  overlay.style.display = 'flex';
+  // 强制重绘以触发 transition
+  void overlay.offsetWidth;
+  overlay.classList.add('visible');
+}
