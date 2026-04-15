@@ -521,7 +521,10 @@ ${linkedContents}
         body: JSON.stringify({
           model: model,
           messages: messagesForApi,
-          temperature: state.globalSettings.apiTemperature || 0.8
+          temperature: state.globalSettings.apiTemperature || 0.8,
+          top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+          presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+          frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
         })
       });
       if (!response.ok) {
@@ -1094,7 +1097,10 @@ ${worldBookContent}
         body: JSON.stringify({
           model: model,
           messages: messagesForApi,
-          temperature: state.globalSettings.apiTemperature || 0.8
+          temperature: state.globalSettings.apiTemperature || 0.8,
+          top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+          presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+          frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
         })
       });
       if (!response.ok) {

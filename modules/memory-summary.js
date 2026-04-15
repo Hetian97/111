@@ -40,8 +40,9 @@ window.openTokenBreakdown = async function() {
   const memMode = chat.settings.memoryMode || (chat.settings.enableStructuredMemory ? 'structured' : 'diary');
   if (memMode === 'vector' && window.vectorMemoryManager) {
     memoryStr = window.vectorMemoryManager.serializeCoreMemories(chat);
-    const topN = chat.vectorMemory?.settings?.topN || 8;
-    const frags = [...(chat.vectorMemory?.fragments || [])].sort((a, b) => (b.importance || 5) - (a.importance || 5)).slice(0, topN);
+    const vm = window.vectorMemoryManager.getVariableMemory(chat);
+    const topN = vm?.settings?.topN || 10;
+    const frags = [...(vm?.fragments || [])].sort((a, b) => (b.importance || 5) - (a.importance || 5)).slice(0, topN);
     memoryStr += frags.map(f => f.content).join('\n');
   } else if ((memMode === 'structured' || chat.settings.enableStructuredMemory) && window.structuredMemoryManager) {
     memoryStr = window.structuredMemoryManager.serializeForPrompt(chat);
@@ -578,7 +579,7 @@ function renderVectorMemoryView() {
   const container = document.getElementById('vector-memory-container');
   const chat = state.chats[state.activeChatId];
   if (!chat || !window.vectorMemoryManager) {
-    container.innerHTML = '<p style="text-align:center; color:#999; margin-top:40px;">向量记忆模块未加载</p>';
+    container.innerHTML = '<p style="text-align:center; color:#999; margin-top:40px;">变量记忆模块未加载</p>';
     return;
   }
 
@@ -708,6 +709,22 @@ function bindVectorMemoryEvents(chat, container) {
     });
   });
 
+  // 日期选择器修改事件
+  container.querySelectorAll('.vm-time-picker').forEach(picker => {
+    picker.addEventListener('change', async (e) => {
+      const id = picker.dataset.id;
+      const newTimeStr = e.target.value;
+      if (!newTimeStr) return;
+      
+      const newTime = new Date(newTimeStr).getTime();
+      window.vectorMemoryManager.editFragment(chat, id, { memoryTime: newTime });
+      await db.chats.put(chat);
+      showToast('记忆时间已更新', 'success');
+      // 重新渲染以排序
+      renderVectorMemoryView();
+    });
+  });
+
   // 分类全选
   container.querySelectorAll('.vm-section-select-all').forEach(sa => {
     sa.addEventListener('click', () => {
@@ -773,7 +790,15 @@ function bindVectorMemoryEvents(chat, container) {
   const settingsBtn = container.querySelector('#vm-settings-btn');
   if (settingsBtn) {
     settingsBtn.addEventListener('click', () => {
-      openVectorMemorySettings(chat);
+      openVectorMemorySettings(chat, 'settings');
+    });
+  }
+
+  // 便携教程按钮
+  const guideBtn = container.querySelector('#vm-guide-btn');
+  if (guideBtn) {
+    guideBtn.addEventListener('click', () => {
+      openVectorMemorySettings(chat, 'guide');
     });
   }
 
@@ -832,7 +857,8 @@ function bindVectorMemoryEvents(chat, container) {
   container.querySelectorAll('.vm-edit-core-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.id;
-      const mem = chat.vectorMemory.coreMemories.find(m => m.id === id);
+      const vm = window.vectorMemoryManager.getVariableMemory(chat);
+      const mem = vm.fragments.find(m => m.id === id && m.category === 'C');
       if (!mem) return;
       const newContent = await showCustomPrompt('编辑核心记忆', '修改内容：', mem.content);
       if (newContent !== null && newContent.trim()) {
@@ -889,152 +915,10 @@ function bindVectorMemoryEvents(chat, container) {
   });
 }
 
-async function openVectorMemorySettings(chat) {
+async function openVectorMemorySettings(chat, defaultTab = 'settings') {
   const settingsHtml = window.vectorMemoryManager.renderSettingsPanel(chat);
 
-  const guideHtml = `
-    <div class="vm-guide">
-      <div class="vm-guide-section">
-        <h4>什么是向量记忆？</h4>
-        <p>向量记忆是一种智能记忆系统。它不会把所有记忆都塞进对话里（太费token），而是根据当前聊天内容，自动检索出最相关的记忆注入给AI。</p>
-        <p>就像人脑一样：你不会时刻想着所有事，但当有人提到某个关键词，相关的记忆就会自然浮现。</p>
-      </div>
-      <div class="vm-guide-section">
-        <h4>工作流程（重要！）</h4>
-        <div class="vm-guide-steps">
-          <div class="vm-guide-step"><span class="vm-step-num">1</span><strong>自动提取</strong>：每N条消息（在聊天设置中配置"自动总结间隔"）自动调用AI提取值得记忆的信息</div>
-          <div class="vm-guide-step"><span class="vm-step-num">2</span><strong>向量化</strong>：提取后自动调用embedding API生成语义向量</div>
-          <div class="vm-guide-step"><span class="vm-step-num">3</span><strong>检索注入</strong>：每轮对话时，根据用户最近的消息检索Top N条最相关的记忆注入到AI上下文</div>
-          <div class="vm-guide-step"><span class="vm-step-num">4</span><strong>主动回忆</strong>：系统会在特定时机（如纪念日）主动注入相关记忆</div>
-        </div>
-        <p class="vm-guide-tip">💡 重要：自动提取不是每轮对话都触发！而是累积到设定的消息数量后才触发一次，避免频繁调用API。统计栏会显示"待提取X条"和"还差Y条自动提取"。</p>
-      </div>
-      <div class="vm-guide-section">
-        <h4>三层记忆架构</h4>
-        <div class="vm-guide-card">
-          <div class="vm-guide-card-title">第一层：核心记忆（永久注入）</div>
-          <p>最重要的信息，比如用户的名字、生日、你们的关系。每次对话都会带上，不需要检索。</p>
-          <p class="vm-guide-tip">建议：只放5-10条最核心的事实，太多就失去意义了。</p>
-        </div>
-        <div class="vm-guide-card">
-          <div class="vm-guide-card-title">第二层：记忆片段（按需检索）</div>
-          <p>大量的记忆存在这里。每条记忆都有关键词标签和向量。对话时系统会自动找出最相关的几条注入。</p>
-          <p class="vm-guide-tip">这是省token的关键：100条记忆可能只注入8条，但都是最相关的。</p>
-        </div>
-        <div class="vm-guide-card">
-          <div class="vm-guide-card-title">第三层：时间线摘要</div>
-          <p>自动生成的近期动态摘要，让AI知道"最近发生了什么"，保持时间连续感。</p>
-        </div>
-      </div>
-      <div class="vm-guide-section">
-        <h4>关键参数详解</h4>
-        <div class="vm-guide-list">
-          <div><span class="vm-guide-label">自动提取间隔</span>在聊天设置中配置，建议20-50条。太少会频繁调用API浪费额度，太多会导致记忆提取不及时。</div>
-          <div><span class="vm-guide-label">Top N（每轮注入数量）</span>每次AI回复时检索多少条记忆注入。建议：记忆少时5-8条，记忆多时10-15条。数量越大AI记得越多，但消耗token也越多。</div>
-          <div><span class="vm-guide-label">检索策略</span>决定用什么作为检索关键词。<strong>推荐"仅用户消息"</strong>，避免角色连发导致检索偏差（如果用混合模式，角色发10条用户发1条，检索就会被角色的话主导）。</div>
-          <div><span class="vm-guide-label">检索缓存</span>如果话题没变，可以复用上次检索结果，节省API调用。建议开启，每3-5条新消息重新检索一次。</div>
-          <div><span class="vm-guide-label">评分权重</span>调整语义、关键词、重要度等权重来控制记忆检索的优先级。默认值适合大多数场景。</div>
-        </div>
-      </div>
-      <div class="vm-guide-section">
-        <h4>最佳实践</h4>
-        <div class="vm-guide-card">
-          <div class="vm-guide-card-title">记忆少（&lt;50条）</div>
-          <p>• Top N = 5-8条</p>
-          <p>• 自动提取间隔 = 20条</p>
-          <p>• 检索策略 = 仅用户消息</p>
-        </div>
-        <div class="vm-guide-card">
-          <div class="vm-guide-card-title">记忆中（50-200条）</div>
-          <p>• Top N = 8-12条</p>
-          <p>• 自动提取间隔 = 30条</p>
-          <p>• 检索策略 = 仅用户消息</p>
-          <p>• 开启检索缓存，间隔3条</p>
-        </div>
-        <div class="vm-guide-card">
-          <div class="vm-guide-card-title">记忆多（&gt;200条）</div>
-          <p>• Top N = 12-15条</p>
-          <p>• 自动提取间隔 = 50条</p>
-          <p>• 检索策略 = 仅用户消息</p>
-          <p>• 开启检索缓存，间隔5条</p>
-          <p>• 定期清理低重要度记忆</p>
-        </div>
-      </div>
-      <div class="vm-guide-section">
-        <h4>常见问题</h4>
-        <div class="vm-guide-list">
-          <div><span class="vm-guide-label">Q: 为什么AI还是失忆？</span>A: ① 检查统计栏中"向量化"是否显示❌或⚠，如果是请检查Embedding API配置；② 增加Top N数量；③ 检查重要记忆是否被正确标记；④ 查看"待提取消息"数量，如果很多说明还没提取。</div>
-          <div><span class="vm-guide-label">Q: 为什么每轮都提取记忆？</span>A: 不是每轮都提取！是累积到"自动总结间隔"设定的消息数量后才提取一次。统计栏会显示"待提取X条"和"还差Y条自动提取"。</div>
-          <div><span class="vm-guide-label">Q: 向量化失败怎么办？</span>A: ① 检查主API或副API是否支持embedding接口；② 在设置中配置自定义Embedding端点；③ 使用支持embedding的模型（如text-embedding-3-small）。</div>
-          <div><span class="vm-guide-label">Q: 如何控制token消耗？</span>A: ① 减少Top N数量；② 增加检索缓存间隔；③ 提高记忆提取的重要度阈值；④ 定期清理不重要的记忆。</div>
-          <div><span class="vm-guide-label">Q: 检索策略怎么选？</span>A: <strong>推荐"仅用户消息"</strong>。如果角色经常连发多条消息，用"混合模式"会导致检索出角色自己说过的话，而不是用户话题相关的记忆。</div>
-        </div>
-      </div>
-      <div class="vm-guide-section">
-        <h4>关于 Embedding 模型及报错解决</h4>
-        <div class="vm-guide-card">
-          <div class="vm-guide-card-title">1. 什么是 Embedding 模型？</div>
-          <p>简单来说，它就像是一个<strong>“高维翻译官”</strong>。它把人类的句子（比如“今天我很开心”）翻译成一段机器能理解的“数学坐标”（也就是向量）。</p>
-          <p>AI 通过计算两句话坐标之间的距离，就能发现“开心”和“高兴”意思一样。这就是“语义检索”，让 AI 像真人一样精准联想和回忆起过去的对话。</p>
-        </div>
-        <div class="vm-guide-card">
-          <div class="vm-guide-card-title">2. 为什么显示“Embedding 失败”？</div>
-          <div class="vm-guide-list">
-            <div><span class="vm-guide-label">代理不支持</span>很多中转 API 只开放了对话接口，没有开放向量化接口（embeddings）。即使你填了 Key，代理商也会拦截请求。</div>
-            <div><span class="vm-guide-label">模型填错</span>对话模型（如 gpt-4o）和 Embedding 模型完全不同！OpenAI 常用的应该是 <code>text-embedding-3-small</code>。</div>
-            <div><span class="vm-guide-label">地址格式错</span>API 地址通常<strong>只需要填到域名</strong>（如 <code>https://api.openai.com</code> 或代理地址），系统会自动加后缀。自己多加后缀会导致乱码报错。</div>
-          </div>
-        </div>
-        <div class="vm-guide-card">
-          <div class="vm-guide-card-title">3. 去哪里获取及如何配置？</div>
-          <p>如果现有 API 无法使用，推荐以下获取渠道（很多提供免费兼容接口）：</p>
-          <p>• <strong>硅基流动 (SiliconFlow)</strong>：注册送额度，提供多款免费高质量模型。<br>• <strong>智谱 AI (BigModel)</strong>：提供 embedding-3 等，送免费额度。<br>• <strong>百川智能 / 零一万物</strong> 等提供兼容接口的平台。</p>
-          <p class="vm-guide-tip"><strong>配置步骤：</strong>勾选「使用自定义 Embedding 端点」→ 填写服务商的基础地址（如 <code>https://api.siliconflow.cn</code>）→ 填写对应的 API Key → 填写服务商文档给出的模型名称（如 <code>BAAI/bge-m3</code>）。配置后尝试添加记忆，如果不报错就说明成功了！</p>
-        </div>
-      </div>
-      <div class="vm-guide-section">
-        <h4>双通道检索</h4>
-        <p>系统同时用两种方式搜索记忆：</p>
-        <div class="vm-guide-card">
-          <div class="vm-guide-card-title">通道A：语义检索（Embedding）</div>
-          <p>把文字转成数字向量，通过数学计算找到意思相近的记忆。比如用户说"好想吃甜的"，能匹配到"喜欢草莓蛋糕"。</p>
-          <p class="vm-guide-tip">需要API支持 /v1/embeddings 接口。如果不支持，系统会自动退化为纯关键词模式。</p>
-        </div>
-        <div class="vm-guide-card">
-          <div class="vm-guide-card-title">通道B：关键词匹配</div>
-          <p>直接匹配文字关键词。作为语义检索的兜底，确保精确提到的内容不会被遗漏。</p>
-        </div>
-      </div>
-      <div class="vm-guide-section">
-        <h4>主动回忆</h4>
-        <p>除了被动检索，系统还会主动触发记忆：</p>
-        <div class="vm-guide-list">
-          <div><span class="vm-guide-label">日期触发</span>今天是某个记忆中提到的日期（如生日、纪念日），自动注入</div>
-          <div><span class="vm-guide-label">情感触发</span>检测到对话情绪变化时，拉取过去类似情绪的记忆</div>
-          <div><span class="vm-guide-label">话题触发</span>对话话题转换时，检索新话题相关的历史记忆</div>
-          <div><span class="vm-guide-label">定期复习</span>定期让AI"复习"重要记忆，防止遗忘</div>
-        </div>
-      </div>
-      <div class="vm-guide-section">
-        <h4>快速上手</h4>
-        <div class="vm-guide-steps">
-          <div class="vm-guide-step"><span class="vm-step-num">1</span>在聊天设置中把记忆模式切换为"向量记忆"</div>
-          <div class="vm-guide-step"><span class="vm-step-num">2</span>开启"自动总结长期记忆"，设置总结间隔（建议20-30条）</div>
-          <div class="vm-guide-step"><span class="vm-step-num">3</span>在向量记忆设置中配置Top N（建议8-12条）</div>
-          <div class="vm-guide-step"><span class="vm-step-num">4</span>选择检索策略为"仅用户消息"（推荐）</div>
-          <div class="vm-guide-step"><span class="vm-step-num">5</span>正常聊天，系统会自动提取记忆并生成向量</div>
-          <div class="vm-guide-step"><span class="vm-step-num">6</span>也可以手动添加核心记忆（用户的关键信息）</div>
-          <div class="vm-guide-step"><span class="vm-step-num">7</span>在记忆列表中可以编辑、删除、钉选任何记忆</div>
-        </div>
-        <p class="vm-guide-tip">💡 提示：统计栏会实时显示"待提取消息"和"还差几条自动提取"，帮助你了解系统状态。</p>
-      </div>
-      <div class="vm-guide-section">
-        <h4>导入导出</h4>
-        <p>向量记忆支持导出为JSON文件，方便备份和分享。导入时会自动重新生成向量，所以导出文件不包含向量数据，体积很小。</p>
-        <p class="vm-guide-tip">导入支持"合并"和"替换"两种模式。合并会保留现有数据并去重，替换会清空后重新导入。</p>
-      </div>
-    </div>
-  `;
+  const guideHtml = window.vectorMemoryManager.renderGuide ? window.vectorMemoryManager.renderGuide() : '<div style="padding:20px;text-align:center;">暂无教程内容</div>';
 
   // 创建全屏设置面板
   let panel = document.getElementById('vm-settings-screen');
@@ -1046,16 +930,16 @@ async function openVectorMemorySettings(chat) {
   panel.innerHTML = `
     <div class="vm-panel-header">
       <span class="vm-panel-back" id="vm-settings-back">&lsaquo;</span>
-      <span class="vm-panel-title">向量记忆</span>
+      <span class="vm-panel-title">变量记忆</span>
       <span style="width:30px;"></span>
     </div>
     <div class="vm-panel-tabs">
-      <div class="vm-panel-tab active" data-tab="settings">设置</div>
-      <div class="vm-panel-tab" data-tab="guide">使用教程</div>
+      <div class="vm-panel-tab ${defaultTab === 'settings' ? 'active' : ''}" data-tab="settings">极客设置</div>
+      <div class="vm-panel-tab ${defaultTab === 'guide' ? 'active' : ''}" data-tab="guide">便携教程</div>
     </div>
     <div class="vm-panel-body">
-      <div class="vm-panel-content active" id="vm-tab-settings">${settingsHtml}</div>
-      <div class="vm-panel-content" id="vm-tab-guide">${guideHtml}</div>
+      <div class="vm-panel-content ${defaultTab === 'settings' ? 'active' : ''}" id="vm-tab-settings">${settingsHtml}</div>
+      <div class="vm-panel-content ${defaultTab === 'guide' ? 'active' : ''}" id="vm-tab-guide">${guideHtml}</div>
     </div>
   `;
   document.body.appendChild(panel);
@@ -1188,7 +1072,7 @@ async function openVectorMemorySettings(chat) {
 }
 
 // ==================== 向量记忆自动总结 ====================
-// ===== 向量记忆提取核心逻辑（公共函数） =====
+// ===== 变量记忆提取核心逻辑（公共函数） =====
 async function executeVectorExtraction(chat, messages, updateTimestamp = false) {
   if (messages.length === 0) {
     showToast('没有可总结的消息', 'info');
@@ -1219,7 +1103,7 @@ async function executeVectorExtraction(chat, messages, updateTimestamp = false) 
 
   const prompt = window.vectorMemoryManager.buildExtractionPrompt(chat, formattedHistory, timeRangeStr, dialogueTimeRange);
 
-  showToast('正在提取向量记忆...', 'info');
+  showToast('正在提取变量记忆...', 'info');
   const apiConfig = window.state.apiConfig;
   const useSecondary = apiConfig.secondaryProxyUrl && apiConfig.secondaryApiKey && apiConfig.secondaryModel;
   const proxyUrl = useSecondary ? apiConfig.secondaryProxyUrl : apiConfig.proxyUrl;
@@ -1247,34 +1131,40 @@ async function executeVectorExtraction(chat, messages, updateTimestamp = false) 
   if (extracted.length > 0) {
     const newIds = await window.vectorMemoryManager.mergeExtractedMemories(chat, extracted);
     if (updateTimestamp) {
-      const vm = window.vectorMemoryManager.getVectorMemory(chat);
-      vm.lastExtractionTimestamp = messages[messages.length - 1].timestamp;
+      const vm = window.vectorMemoryManager.getVariableMemory(chat);
+      // 基于最新架构：通过方法内部更新的 _tempLastMsgIndex 进行赋值，此处可以略过或者用以兜底
     }
     await db.chats.put(chat);
-    showToast(`成功提取 ${newIds.length} 条向量记忆`, 'success');
+    showToast(`成功提取 ${newIds.length} 条变量记忆`, 'success');
     if (document.getElementById('vector-memory-container')?.style.display !== 'none') {
       renderVectorMemoryView();
     }
   } else {
-    showToast('未提取到新的记忆', 'info');
-    // 修复BUG：即便是没有提取到新记忆，如果需要更新时间戳，也要强制更新，避免陷入死循环
     if (updateTimestamp) {
-      const vm = window.vectorMemoryManager.getVectorMemory(chat);
-      vm.lastExtractionTimestamp = messages[messages.length - 1].timestamp;
+      const vm = window.vectorMemoryManager.getVariableMemory(chat);
+      if (window.vectorMemoryManager._tempLastMsgIndex !== undefined && window.vectorMemoryManager._tempLastMsgIndex !== -1) {
+        vm.settings.lastExtractedMsgIndex = window.vectorMemoryManager._tempLastMsgIndex;
+      }
       await db.chats.put(chat);
-      console.log('[向量记忆] 虽未提取到新记忆，但已更新时间戳以避免重复处理');
+      console.log('[变量记忆] 虽未提取到新记忆，但已更新消息索引以避免重复处理');
+    }
+    
+    // 如果没有提取到记忆，使用明显的弹窗告知用户，避免用户觉得点击了没反应
+    if (typeof showCustomAlert === 'function') {
+      await showCustomAlert('提取完成', '当前对话片段中没有发现值得作为长期记忆记录的新内容。\n\n系统进度已更新，后续会继续检查新消息。');
+    } else {
+      alert('提取完成：当前对话片段中没有发现值得作为长期记忆记录的新内容。\n\n系统进度已更新，后续会继续检查新消息。');
     }
   }
 }
 
-// ===== 向量记忆总结模式选择菜单 =====
+// ===== 变量记忆总结模式选择菜单 =====
 async function openVectorSummaryMenu(chat) {
-  const vm = window.vectorMemoryManager.getVectorMemory(chat);
-  const lastTimestamp = vm.lastExtractionTimestamp || 0;
-  // 只统计非隐藏消息（与聊天详情保持一致）
-  const totalMessages = chat.history.filter(m => !m.isHidden).length;
-  const newMessages = chat.history.filter(m => m.timestamp > lastTimestamp && (!m.isHidden || (m.role === 'system' && m.content && m.content.includes('内心独白'))));
-  const lastDateStr = lastTimestamp ? new Date(lastTimestamp).toLocaleString('zh-CN') : '从未更新';
+  const vm = window.vectorMemoryManager.getVariableMemory(chat);
+  const lastIdx = vm.settings.lastExtractedMsgIndex !== undefined ? vm.settings.lastExtractedMsgIndex : -1;
+  const historyLen = chat.history ? chat.history.length : 0;
+  const newMessagesCount = Math.max(0, historyLen - 1 - lastIdx);
+  const totalMessages = historyLen;
 
   return new Promise(resolve => {
     window._modalResolve = (result) => { resolve(result); };
@@ -1283,21 +1173,21 @@ async function openVectorSummaryMenu(chat) {
     const options = [
       {
         id: 'new-messages',
-        title: '新消息总结',
-        description: '总结上次之后的新消息',
-        info: `待处理消息：${newMessages.length} 条`
+        title: '新消息提取',
+        description: '提取上次之后的新消息',
+        info: `待处理消息：${newMessagesCount} 条`
       },
       {
         id: 'range',
-        title: '范围总结',
-        description: '指定消息范围进行总结',
+        title: '范围提取',
+        description: '指定消息范围进行提取',
         info: `总消息数：${totalMessages} 条`
       },
       {
         id: 'reset',
-        title: '重置时间戳',
-        description: '重置后下次对话重新总结',
-        info: `上次更新：${lastDateStr}`
+        title: '重置提取进度',
+        description: '重置后下次对话将从头提取',
+        info: `当前进度索引：${lastIdx}`
       }
     ];
 
@@ -1354,42 +1244,43 @@ async function openVectorSummaryMenu(chat) {
   });
 }
 
-// ===== 向量记忆 - 新消息总结 =====
+// ===== 变量记忆 - 新消息提取 =====
 async function handleVectorNewMessagesSummary(chat) {
-  const vm = window.vectorMemoryManager.getVectorMemory(chat);
-  const lastTimestamp = vm.lastExtractionTimestamp || 0;
-  const newMessages = chat.history.filter(m => m.timestamp > lastTimestamp && (!m.isHidden || (m.role === 'system' && m.content && m.content.includes('内心独白'))));
-
-  if (newMessages.length === 0) {
-    showToast('暂无新消息需要总结', 'info');
+  const vm = window.vectorMemoryManager.getVariableMemory(chat);
+  const lastIdx = vm.settings.lastExtractedMsgIndex !== undefined ? vm.settings.lastExtractedMsgIndex : -1;
+  const historyLen = chat.history ? chat.history.length : 0;
+  
+  if (lastIdx + 1 >= historyLen) {
+    showToast('暂无新消息需要提取', 'info');
     return;
   }
+
+  const newMessages = chat.history.slice(lastIdx + 1);
 
   if (newMessages.length < 5) {
     const confirmed = await showCustomConfirm(
       '消息较少',
-      `只有 ${newMessages.length} 条新消息，建议至少5条以上才能进行有意义的总结。\n\n是否继续？`
+      `只有 ${newMessages.length} 条新消息，建议至少5条以上才能进行有意义的提取。\n\n是否继续？`
     );
     if (!confirmed) return;
   }
 
-  showToast(`正在总结 ${newMessages.length} 条新消息...`, 'info');
+  showToast(`正在提取 ${newMessages.length} 条新消息...`, 'info');
   try {
     await executeVectorExtraction(chat, newMessages, true);
   } catch (error) {
-    console.error('[向量记忆-新消息总结] 错误:', error);
-    showToast('总结失败：' + error.message, 'error');
+    console.error('[变量记忆-新消息提取] 错误:', error);
+    showToast('提取失败：' + error.message, 'error');
   }
 }
 
-// ===== 向量记忆 - 范围总结 =====
+// ===== 变量记忆 - 范围提取 =====
 async function handleVectorRangeSummary(chat) {
-  // 只统计非隐藏消息（与聊天详情保持一致）
-  const totalMessages = chat.history.filter(m => !m.isHidden).length;
+  const totalMessages = chat.history.length;
 
   return new Promise(resolve => {
     window._modalResolve = resolve;
-    window._modalTitle.textContent = '范围总结（向量记忆）';
+    window._modalTitle.textContent = '范围提取（变量记忆）';
 
     window._modalBody.innerHTML = `
       <div class="range-summary-form">
@@ -1409,7 +1300,7 @@ async function handleVectorRangeSummary(chat) {
         <div style="margin-top: 15px;">
           <label style="display: flex; align-items: center; font-size: 13px; cursor: pointer;">
             <input type="checkbox" id="update-timestamp" style="margin-right: 8px;">
-            <span>更新时间戳（勾选后将更新到结束消息的时间）</span>
+            <span>更新提取进度（勾选后将覆盖当前提取进度）</span>
           </label>
         </div>
       </div>
@@ -1421,7 +1312,7 @@ async function handleVectorRangeSummary(chat) {
       modalFooter.style.justifyContent = 'flex-end';
       modalFooter.innerHTML = `
         <button id="custom-modal-cancel">取消</button>
-        <button id="custom-modal-confirm" class="confirm-btn">开始总结</button>
+        <button id="custom-modal-confirm" class="confirm-btn">开始提取</button>
       `;
     }
 
@@ -1449,12 +1340,12 @@ async function handleVectorRangeSummary(chat) {
         return;
       }
 
-      showToast(`正在总结第 ${start}-${end} 条消息...`, 'info');
+      showToast(`正在提取第 ${start}-${end} 条消息...`, 'info');
       try {
         await executeVectorExtraction(chat, validMessages, updateTimestamp);
       } catch (error) {
-        console.error('[向量记忆-范围总结] 错误:', error);
-        showToast('总结失败：' + error.message, 'error');
+        console.error('[变量记忆-范围提取] 错误:', error);
+        showToast('提取失败：' + error.message, 'error');
       }
     };
 
@@ -1463,29 +1354,27 @@ async function handleVectorRangeSummary(chat) {
   });
 }
 
-// ===== 向量记忆 - 重置时间戳 =====
+// ===== 变量记忆 - 重置进度 =====
 async function handleVectorResetTimestamp(chat) {
-  const vm = window.vectorMemoryManager.getVectorMemory(chat);
-  const lastTimestamp = vm.lastExtractionTimestamp || 0;
-  const lastDateStr = lastTimestamp ? new Date(lastTimestamp).toLocaleString('zh-CN') : '从未更新';
-  // 只统计非隐藏消息（与聊天详情保持一致）
-  const totalMessages = chat.history.filter(m => !m.isHidden).length;
-  const newMessages = chat.history.filter(m => m.timestamp > lastTimestamp && (!m.isHidden || (m.role === 'system' && m.content && m.content.includes('内心独白'))));
+  const vm = window.vectorMemoryManager.getVariableMemory(chat);
+  const lastIdx = vm.settings.lastExtractedMsgIndex !== undefined ? vm.settings.lastExtractedMsgIndex : -1;
+  const totalMessages = chat.history.length;
+  const newMessagesCount = Math.max(0, totalMessages - 1 - lastIdx);
 
   const message = `当前状态：
-- 上次更新：${lastDateStr}
+- 当前进度索引：${lastIdx}
 - 总消息数：${totalMessages}
-- 待处理消息：${newMessages.length}
+- 待处理消息：${newMessagesCount}
 
-重置后下次对话将重新提取所有未处理的消息。
+重置后下次对话将从头重新提取所有消息。
 
 确定要重置吗？`;
 
   const confirmed = await showCustomConfirm('确认重置', message);
   if (confirmed) {
-    vm.lastExtractionTimestamp = 0;
+    vm.settings.lastExtractedMsgIndex = -1;
     await db.chats.put(chat);
-    showToast('已重置，下次对话将重新提取记忆', 'success');
+    showToast('已重置进度，下次将重新提取', 'success');
   }
 }
 
@@ -1494,26 +1383,29 @@ async function triggerVectorMemorySummary(chatId, force = false) {
   const chat = state.chats[chatId];
   if (!chat || !window.vectorMemoryManager) return;
 
-  const vm = window.vectorMemoryManager.getVectorMemory(chat);
-  const lastTimestamp = vm.lastExtractionTimestamp || 0;
+  const vm = window.vectorMemoryManager.getVariableMemory(chat);
+  const lastIdx = vm.settings.lastExtractedMsgIndex !== undefined ? vm.settings.lastExtractedMsgIndex : -1;
+  const historyLen = chat.history ? chat.history.length : 0;
 
   let messagesToProcess;
   if (force) {
-    messagesToProcess = chat.history.filter(m => !m.isHidden || (m.role === 'system' && m.content && m.content.includes('内心独白'))).slice(-(chat.settings.autoMemoryInterval || 20));
+    const autoInterval = vm.settings.autoExtractionMsgInterval || 20;
+    messagesToProcess = chat.history.filter(m => !m.isHidden || (m.role === 'system' && m.content && m.content.includes('内心独白'))).slice(-autoInterval);
   } else {
-    messagesToProcess = chat.history.filter(m => m.timestamp > lastTimestamp && (!m.isHidden || (m.role === 'system' && m.content && m.content.includes('内心独白'))));
+    if (lastIdx + 1 >= historyLen) return; // 没有新消息
+    messagesToProcess = chat.history.slice(lastIdx + 1);
   }
 
   if (messagesToProcess.length === 0) {
-    if (force) showToast('没有新的对话需要总结', 'info');
+    if (force) showToast('没有新的对话需要提取', 'info');
     return;
   }
 
   try {
     await executeVectorExtraction(chat, messagesToProcess, !force);
   } catch (e) {
-    console.error('[向量记忆] 总结失败:', e);
-    showToast('向量记忆总结失败: ' + e.message, 'error');
+    console.error('[变量记忆] 提取失败:', e);
+    showToast('变量记忆提取失败: ' + e.message, 'error');
   }
 }
 
@@ -1739,7 +1631,7 @@ async function convertLongTermMemoryToVector(chatId) {
   let shouldProceed = true;
   if (totalMemories > 50) {
     const message = `检测到长期记忆：\n\n- 记忆数量：${totalMemories} 条\n- 将逐条调用模型生成向量，预计需要一定时间和额度\n\n继续转换？`;
-    shouldProceed = await showCustomConfirm('向量记忆转换', message);
+    shouldProceed = await showCustomConfirm('变量记忆转换', message);
   }
 
   if (!shouldProceed) {
@@ -1774,6 +1666,7 @@ async function convertLongTermMemoryToVector(chatId) {
             importance: 5,
             emotionalWeight: 3,
             embedding,
+            memoryTime: mem.timestamp || Date.now(),
             source: 'manual'
           });
           successCount++;

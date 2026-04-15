@@ -1070,6 +1070,9 @@ ${recentHistoryWithUser}
               content: systemPrompt
             }, ...messagesForApi],
             temperature: state.globalSettings.apiTemperature || 0.95,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
 
           })
         });
@@ -1197,8 +1200,11 @@ ${recentHistoryWithUser}
             content: systemPrompt
           }, ...messagesForApi],
           temperature: state.globalSettings.apiTemperature || 0.95,
-        })
-      });
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
+          })
+        });
       if (!response.ok) throw new Error(`API 错误: ${response.statusText}`);
       const data = await response.json();
       const aiResponseContent = getGeminiResponseText(data);
@@ -1733,7 +1739,10 @@ ${stickerContext}
               role: 'system',
               content: systemPrompt
             }, ...messagesForApi],
-            temperature: state.globalSettings.apiTemperature || 0.9
+            temperature: state.globalSettings.apiTemperature || 0.9,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
           })
         });
 
@@ -1912,6 +1921,9 @@ ${historySlice.map(msg => `${msg.role === 'user' ? myNickname : chat.name}: ${St
               content: systemPrompt
             }, ...messagesPayload],
             temperature: state.globalSettings.apiTemperature || 0.8,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0,
           })
         });
 
@@ -2413,7 +2425,10 @@ ${recentHistoryWithUser}
               role: 'system',
               content: systemPrompt
             }, ...messagesForApi],
-            temperature: state.globalSettings.apiTemperature || 0.9
+            temperature: state.globalSettings.apiTemperature || 0.9,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
 
           })
         });
@@ -2562,7 +2577,10 @@ ${recentHistoryWithUser}
               role: 'system',
               content: systemPrompt
             }, ...messagesForApi],
-            temperature: state.globalSettings.apiTemperature || 0.9
+            temperature: state.globalSettings.apiTemperature || 0.9,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
 
           })
         });
@@ -2826,7 +2844,10 @@ ${recentHistoryWithUser}
               role: 'system',
               content: systemPrompt
             }, ...messagesForApi],
-            temperature: state.globalSettings.apiTemperature || 0.9
+            temperature: state.globalSettings.apiTemperature || 0.9,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
           })
         });
 
@@ -3088,7 +3109,10 @@ ${recentHistoryWithUser}
               role: 'system',
               content: systemPrompt
             }, ...messagesForApi],
-            temperature: state.globalSettings.apiTemperature || 0.9
+            temperature: state.globalSettings.apiTemperature || 0.9,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
 
           })
         });
@@ -3252,7 +3276,10 @@ ${recentHistoryWithUser}
               role: 'system',
               content: systemPrompt
             }, ...messagesForApi],
-            temperature: state.globalSettings.apiTemperature || 0.9
+            temperature: state.globalSettings.apiTemperature || 0.9,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
 
           })
         });
@@ -3445,7 +3472,10 @@ ${recentHistoryWithUser}
               role: 'system',
               content: systemPrompt
             }, ...messagesForApi],
-            temperature: state.globalSettings.apiTemperature || 0.9
+            temperature: state.globalSettings.apiTemperature || 0.9,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
             // response_format: { "type": "json_object" } <-- 此行已被删除
           })
         });
@@ -3595,6 +3625,9 @@ ${recentHistoryWithUser}
             model: model,
             messages: [{ role: 'system', content: systemPrompt }, ...messagesForApi],
             temperature: state.globalSettings.apiTemperature || 1.0,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0,
           })
         });
 
@@ -3832,6 +3865,9 @@ ${recentHistoryWithUser}
               content: systemPrompt
             }, ...messagesForApi],
             temperature: state.globalSettings.apiTemperature || 1.0,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0,
           })
         });
 
@@ -5421,8 +5457,8 @@ ${recentHistory}
     const recentHistory_RAW = chat.history.slice(-maxMemory);
     const filteredHistory = await filterHistoryWithDoNotSendRules(recentHistory_RAW, activeCharacterId);
     const recentHistoryWithUser = filteredHistory.map(msg => `${msg.role === 'user' ? userDisplayNameForAI : chat.name}: ${String(msg.content).substring(0, 30)}...`).join('\n');
-    let longTermMemoryContext = '';
     const memMode = chat.settings?.memoryMode || (chat.settings?.enableStructuredMemory ? 'structured' : 'diary');
+    let longTermMemoryContext = '';
     if (memMode === 'vector' && window.vectorMemoryManager) {
       longTermMemoryContext = await window.vectorMemoryManager.serializeCoreMemories(chat) || '无';
     } else if (memMode === 'structured' && window.structuredMemoryManager) {
@@ -5460,7 +5496,7 @@ ${recentHistoryWithUser}
         await fetch(`${proxyUrl}/v1/chat/completions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: model, messages: [{ role: 'system', content: systemPrompt }, ...messagesForApi], temperature: state.globalSettings.apiTemperature || 1.0 })
+          body: JSON.stringify({ model: model, messages: [{ role: 'system', content: systemPrompt }, ...messagesForApi], temperature: state.globalSettings.apiTemperature || 1.0, top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0, presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0, frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0 })
         });
       if (!response.ok) throw new Error(`API 错误: ${response.statusText}`);
       const data = await response.json();

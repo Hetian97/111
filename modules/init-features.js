@@ -1899,6 +1899,15 @@ window.initFeatures = function(state, db) {
     document.getElementById('api-temperature-slider').addEventListener('input', (e) => {
       document.getElementById('api-temperature-value').textContent = e.target.value;
     });
+    document.getElementById('api-top-p-slider').addEventListener('input', (e) => {
+      document.getElementById('api-top-p-value').textContent = e.target.value;
+    });
+    document.getElementById('api-presence-penalty-slider').addEventListener('input', (e) => {
+      document.getElementById('api-presence-penalty-value').textContent = e.target.value;
+    });
+    document.getElementById('api-frequency-penalty-slider').addEventListener('input', (e) => {
+      document.getElementById('api-frequency-penalty-value').textContent = e.target.value;
+    });
     const chatListContainer = document.getElementById('messages-view');
     chatListContainer.addEventListener('scroll', () => {
       const {
@@ -4817,7 +4826,10 @@ ${linkedContents}
           body: JSON.stringify({
             model: model,
             messages: messagesPayload,
-            temperature: state.globalSettings.apiTemperature || 0.8
+            temperature: state.globalSettings.apiTemperature || 0.8,
+            top_p: state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0,
+            presence_penalty: state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0,
+            frequency_penalty: state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0
           })
         });
 

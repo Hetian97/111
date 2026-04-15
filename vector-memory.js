@@ -1,39 +1,46 @@
 // ========================================
-// 向量记忆系统 (Vector Memory System)
-// 三层记忆架构：核心记忆 + 向量检索 + 时间线摘要
-// 双通道检索：语义向量 + 关键词标签
+// 变量记忆系统 (Variable Memory System)
+// 原向量记忆的全面升级版：支持自由时间戳、精细分类
 // ========================================
 
-class VectorMemoryManager {
+class VariableMemoryManager {
   constructor() {
-    this.CATEGORIES = {
-      F: { name: '偏好/事实', color: '#007aff', icon: 'F' },
-      E: { name: '事件', color: '#34c759', icon: 'E' },
-      D: { name: '决定', color: '#ff9500', icon: 'D' },
-      P: { name: '计划/待办', color: '#5856d6', icon: 'P' },
-      R: { name: '关系变化', color: '#ff2d55', icon: 'R' },
-      M: { name: '情绪节点', color: '#af52de', icon: 'M' },
-      C: { name: '核心记忆', color: '#ff3b30', icon: 'C' }
+    // 10大精细化分类
+    this.DEFAULT_CATEGORIES = {
+      U: { name: '用户设定', color: '#007aff', icon: '', desc: '外貌、性格、喜好、职业等' },
+      A: { name: '角色设定', color: '#5856d6', icon: '', desc: 'AI外貌、习惯、状态变化' },
+      R: { name: '关系发展', color: '#ff2d55', icon: '', desc: '里程碑、亲密互动、称呼变化' },
+      E: { name: '经历/事件', color: '#34c759', icon: '', desc: '共同经历、日常趣事' },
+      I: { name: '物品/礼物', color: '#af52de', icon: '', desc: '互赠礼物、共同拥有的物品' },
+      L: { name: '地点/场景', color: '#00c7be', icon: '', desc: '重要的地点记忆' },
+      P: { name: '承诺/计划', color: '#ff9500', icon: '', desc: '未来的约定、待办事项' },
+      T: { name: '禁忌/规则', color: '#ff3b30', icon: '', desc: '雷区、不能提的话题、特殊规矩' },
+      M: { name: '情绪/心理', color: '#e58e26', icon: '', desc: '感动瞬间、心理阴影、深层吐露' },
+      C: { name: '核心灵魂', color: '#ff0000', icon: '', desc: '最高优先级、不可遗忘的绝对设定' }
     };
     this.embeddingCache = new Map();
     this._embeddingQueue = [];
     this._isProcessingQueue = false;
   }
 
-  // ==================== 数据结构初始化 ====================
+  // ==================== 数据结构初始化与迁移 ====================
 
   getVectorMemory(chat) {
-    if (!chat.vectorMemory) {
-      chat.vectorMemory = {
+    // 兼容旧接口名，实际返回 variableMemory
+    return this.getVariableMemory(chat);
+  }
+
+  getVariableMemory(chat) {
+    if (!chat.variableMemory) {
+      chat.variableMemory = {
         fragments: [],
-        coreMemories: [],
         timelineSummaries: {},
         settings: {
-          topN: 8,
+          topN: 10,
           embeddingModel: '',
           embeddingEndpoint: '',
           useCustomEmbedding: false,
-          scoreWeights: { semantic: 0.4, keyword: 0.3, importance: 0.15, emotion: 0.1, recency: 0.05 },
+          scoreWeights: { semantic: 0.4, keyword: 0.3, importance: 0.2, emotion: 0.05, recency: 0.05 },
           customExtractionPrompt: '',
           useCustomExtractionPrompt: false,
           enableDateTrigger: true,
@@ -44,78 +51,108 @@ class VectorMemoryManager {
           retrievalStrategy: 'user-only',
           retrievalUserMsgCount: 3,
           retrievalCacheEnabled: true,
-          retrievalCacheInterval: 3
+          retrievalCacheInterval: 3,
+          autoExtractionMsgInterval: 20,
+          lastExtractedMsgIndex: -1 // 基于消息索引，解决每轮都提取的Bug
         },
-        lastExtractionTimestamp: 0,
-        lastReviewTimestamp: 0,
         _customCategories: {},
         stats: { totalFragments: 0, totalRecalls: 0, lastUpdated: 0 },
-        _retrievalCache: { query: '', result: null, timestamp: 0, msgCount: 0 }
+        _retrievalCache: { query: '', result: null, timestamp: 0, msgCount: 0 },
+        _migrated: false
       };
     }
-    // 兼容旧数据
-    const vm = chat.vectorMemory;
-    if (!vm.fragments) vm.fragments = [];
-    if (!vm.coreMemories) vm.coreMemories = [];
-    if (!vm.timelineSummaries) vm.timelineSummaries = {};
-    if (!vm.settings) vm.settings = {};
-    if (!vm.settings.scoreWeights) vm.settings.scoreWeights = { semantic: 0.4, keyword: 0.3, importance: 0.15, emotion: 0.1, recency: 0.05 };
-    if (!vm._customCategories) vm._customCategories = {};
-    if (!vm.stats) vm.stats = { totalFragments: 0, totalRecalls: 0, lastUpdated: 0 };
-    // 新增配置项的默认值
-    if (!vm.settings.retrievalStrategy) vm.settings.retrievalStrategy = 'user-only';
-    if (!vm.settings.retrievalUserMsgCount) vm.settings.retrievalUserMsgCount = 3;
-    if (vm.settings.retrievalCacheEnabled === undefined) vm.settings.retrievalCacheEnabled = true;
-    if (!vm.settings.retrievalCacheInterval) vm.settings.retrievalCacheInterval = 3;
-    if (!vm._retrievalCache) vm._retrievalCache = { query: '', result: null, timestamp: 0, msgCount: 0 };
+    
+    const vm = chat.variableMemory;
+    // 自动补全默认值
+    if (vm.settings.autoExtractionMsgInterval === undefined) vm.settings.autoExtractionMsgInterval = 20;
+    if (vm.settings.lastExtractedMsgIndex === undefined) vm.settings.lastExtractedMsgIndex = -1;
+
+    // 无损迁移旧版 VectorMemory 数据
+    if (chat.vectorMemory && !vm._migrated) {
+      this._migrateFromVectorMemory(chat);
+    }
+
     return vm;
   }
 
-  // ==================== 核心记忆（第一层：永远注入） ====================
+  _migrateFromVectorMemory(chat) {
+    const old = chat.vectorMemory;
+    const vm = chat.variableMemory;
+    if (!old) return;
 
-  getCoreMemories(chat) {
-    const vm = this.getVectorMemory(chat);
-    return vm.coreMemories || [];
-  }
-
-  addCoreMemory(chat, content) {
-    const vm = this.getVectorMemory(chat);
-    const id = 'core_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-    vm.coreMemories.push({ id, content, createdAt: Date.now() });
-    return id;
-  }
-
-  editCoreMemory(chat, id, newContent) {
-    const vm = this.getVectorMemory(chat);
-    const mem = vm.coreMemories.find(m => m.id === id);
-    if (mem) mem.content = newContent;
-  }
-
-  deleteCoreMemory(chat, id) {
-    const vm = this.getVectorMemory(chat);
-    vm.coreMemories = vm.coreMemories.filter(m => m.id !== id);
-  }
-
-  pinToCoreMemory(chat, fragmentId) {
-    const vm = this.getVectorMemory(chat);
-    const fragment = vm.fragments.find(f => f.id === fragmentId);
-    if (fragment) {
-      this.addCoreMemory(chat, fragment.content);
+    console.log('[变量记忆] 开始迁移旧版向量记忆数据...');
+    
+    // 迁移核心记忆为 C 类片段
+    if (old.coreMemories && old.coreMemories.length > 0) {
+      for (const core of old.coreMemories) {
+        vm.fragments.push({
+          id: 'mem_core_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+          content: core.content,
+          tags: ['核心设定'],
+          category: 'C',
+          importance: 10,
+          emotionalWeight: 5,
+          createdAt: core.createdAt || Date.now(),
+          memoryTime: core.createdAt || Date.now(), // 关键：新增 memoryTime
+          lastRecalled: 0,
+          recallCount: 0,
+          embedding: null, // 需要重新生成
+          linkedMemories: [],
+          source: 'migrate_core',
+          context: ''
+        });
+      }
     }
+
+    // 迁移普通片段
+    if (old.fragments && old.fragments.length > 0) {
+      for (const frag of old.fragments) {
+        // 旧分类映射到新分类
+        let newCat = 'E';
+        if (frag.category === 'F') newCat = 'U'; // 偏好/事实 -> 用户设定
+        else if (frag.category === 'D') newCat = 'E'; // 决定 -> 事件
+        else if (frag.category === 'P') newCat = 'P'; // 计划 -> 计划
+        else if (frag.category === 'R') newCat = 'R'; // 关系 -> 关系
+        else if (frag.category === 'M') newCat = 'M'; // 情绪 -> 情绪
+
+        vm.fragments.push({
+          ...frag,
+          category: newCat,
+          memoryTime: frag.dialogueTimeRange?.start || frag.createdAt || Date.now(), // 优先使用对话时间作为记忆时间
+          dialogueTimeRange: undefined // 废弃该字段，统一用 memoryTime
+        });
+      }
+    }
+
+    // 迁移设置
+    if (old.settings) {
+      vm.settings = { ...vm.settings, ...old.settings };
+    }
+    
+    // 迁移 lastExtractedMsgIndex (估算)
+    if (old.lastExtractionTimestamp && chat.history) {
+      const idx = chat.history.findIndex(m => m.timestamp >= old.lastExtractionTimestamp);
+      vm.settings.lastExtractedMsgIndex = idx >= 0 ? idx : chat.history.length - 1;
+    } else if (chat.history) {
+      vm.settings.lastExtractedMsgIndex = chat.history.length - 1;
+    }
+
+    vm.stats = old.stats || vm.stats;
+    vm._customCategories = old._customCategories || {};
+    vm._migrated = true;
+    console.log('[变量记忆] 迁移完成，共', vm.fragments.length, '条记忆');
   }
 
-  serializeCoreMemories(chat) {
-    const cores = this.getCoreMemories(chat);
-    if (cores.length === 0) return '';
-    let output = '## 核心记忆（永久）\n';
-    cores.forEach(m => { output += `- ${m.content}\n`; });
-    return output;
+  // 获取所有可用分类 (包括自定义)
+  getCategories(chat) {
+    const vm = this.getVariableMemory(chat);
+    return { ...this.DEFAULT_CATEGORIES, ...(vm._customCategories || {}) };
   }
 
-  // ==================== 记忆片段管理（第二层：向量检索） ====================
+  // ==================== 记忆片段增删改查 ====================
 
   createFragment(chat, data) {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     const id = 'mem_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const fragment = {
       id,
@@ -124,8 +161,8 @@ class VectorMemoryManager {
       category: data.category || 'E',
       importance: data.importance || 5,
       emotionalWeight: data.emotionalWeight || 3,
-      createdAt: data.createdAt || Date.now(),
-      dialogueTimeRange: data.dialogueTimeRange || null, // 对话时间范围 { start: timestamp, end: timestamp }
+      createdAt: Date.now(),
+      memoryTime: data.memoryTime || Date.now(), // 发生时间（可自由修改）
       lastRecalled: 0,
       recallCount: 0,
       embedding: data.embedding || null,
@@ -140,7 +177,7 @@ class VectorMemoryManager {
   }
 
   editFragment(chat, id, updates) {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     const frag = vm.fragments.find(f => f.id === id);
     if (!frag) return false;
     if (updates.content !== undefined) { frag.content = updates.content; frag.embedding = null; }
@@ -148,6 +185,7 @@ class VectorMemoryManager {
     if (updates.category !== undefined) frag.category = updates.category;
     if (updates.importance !== undefined) frag.importance = updates.importance;
     if (updates.emotionalWeight !== undefined) frag.emotionalWeight = updates.emotionalWeight;
+    if (updates.memoryTime !== undefined) frag.memoryTime = updates.memoryTime; // 核心：修改发生时间
     if (updates.linkedMemories !== undefined) frag.linkedMemories = updates.linkedMemories;
     if (updates.context !== undefined) frag.context = updates.context;
     vm.stats.lastUpdated = Date.now();
@@ -155,7 +193,7 @@ class VectorMemoryManager {
   }
 
   deleteFragment(chat, id) {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     vm.fragments = vm.fragments.filter(f => f.id !== id);
     // 清理关联引用
     vm.fragments.forEach(f => {
@@ -166,16 +204,46 @@ class VectorMemoryManager {
   }
 
   getFragment(chat, id) {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     return vm.fragments.find(f => f.id === id) || null;
   }
 
   getAllFragments(chat) {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     return vm.fragments || [];
   }
 
-  // ==================== Embedding 相关 ====================
+  // 兼容旧接口
+  getCoreMemories(chat) {
+    const vm = this.getVariableMemory(chat);
+    return vm.fragments.filter(f => f.category === 'C');
+  }
+
+  addCoreMemory(chat, content) {
+    return this.createFragment(chat, { content, category: 'C', importance: 10, tags: ['核心设定'] });
+  }
+
+  editCoreMemory(chat, id, newContent) {
+    this.editFragment(chat, id, { content: newContent });
+  }
+
+  deleteCoreMemory(chat, id) {
+    this.deleteFragment(chat, id);
+  }
+
+  pinToCoreMemory(chat, fragmentId) {
+    this.editFragment(chat, fragmentId, { category: 'C', importance: 10 });
+  }
+
+  serializeCoreMemories(chat) {
+    const cores = this.getCoreMemories(chat);
+    if (cores.length === 0) return '';
+    let output = '## 核心灵魂设定（不可违背）\n';
+    cores.forEach(m => { output += `- ${m.content}\n`; });
+    return output;
+  }
+
+  // ==================== Embedding 获取 ====================
 
   async getEmbedding(text, chat) {
     if (!text || !text.trim()) return null;
@@ -183,7 +251,7 @@ class VectorMemoryManager {
     if (this.embeddingCache.has(cacheKey)) return this.embeddingCache.get(cacheKey);
 
     try {
-      const vm = this.getVectorMemory(chat);
+      const vm = this.getVariableMemory(chat);
       const apiConfig = window.state?.apiConfig || {};
       let endpoint, apiKey, model;
 
@@ -192,17 +260,13 @@ class VectorMemoryManager {
         apiKey = vm.settings.embeddingApiKey || apiConfig.apiKey;
         model = vm.settings.embeddingModel || 'text-embedding-3-small';
       } else {
-        // 使用主API或副API
         const useSecondary = apiConfig.secondaryProxyUrl && apiConfig.secondaryApiKey;
         endpoint = useSecondary ? apiConfig.secondaryProxyUrl : apiConfig.proxyUrl;
         apiKey = useSecondary ? apiConfig.secondaryApiKey : apiConfig.apiKey;
         model = 'text-embedding-3-small';
       }
 
-      if (!endpoint || !apiKey) {
-        console.warn('[向量记忆] 无可用的Embedding API配置，使用关键词模式');
-        return null;
-      }
+      if (!endpoint || !apiKey) return null; // 降级为BM25纯本地模式
 
       const url = endpoint.endsWith('/') ? endpoint + 'v1/embeddings' : endpoint + '/v1/embeddings';
       const response = await fetch(url, {
@@ -211,31 +275,17 @@ class VectorMemoryManager {
         body: JSON.stringify({ model, input: text.trim() })
       });
 
-      if (!response.ok) {
-        console.warn(`[向量记忆] Embedding API 返回 ${response.status}`);
-        return null;
-      }
-
+      if (!response.ok) return null;
       const data = await response.json();
       const embedding = data?.data?.[0]?.embedding || null;
       if (embedding) this.embeddingCache.set(cacheKey, embedding);
       return embedding;
     } catch (e) {
-      console.warn('[向量记忆] Embedding 请求失败:', e.message);
       return null;
     }
   }
 
-  async batchGetEmbeddings(texts, chat) {
-    const results = [];
-    for (const text of texts) {
-      const emb = await this.getEmbedding(text, chat);
-      results.push(emb);
-    }
-    return results;
-  }
-
-  // ==================== 检索引擎（双通道） ====================
+  // ==================== 检索引擎（BM25 + Vector + Time + Importance） ====================
 
   cosineSimilarity(a, b) {
     if (!a || !b || a.length !== b.length) return 0;
@@ -248,1183 +298,490 @@ class VectorMemoryManager {
     return dot / (Math.sqrt(normA) * Math.sqrt(normB) || 1);
   }
 
-  keywordMatch(queryTokens, tags) {
-    if (!queryTokens.length || !tags.length) return 0;
-    const lowerTags = tags.map(t => t.toLowerCase());
-    let matches = 0;
+  // BM25 简化版词频匹配
+  bm25Match(queryTokens, text) {
+    if (!queryTokens.length || !text) return 0;
+    const lowerText = text.toLowerCase();
+    let score = 0;
     for (const token of queryTokens) {
       const lt = token.toLowerCase();
-      if (lowerTags.some(tag => tag.includes(lt) || lt.includes(tag))) matches++;
+      if (lowerText.includes(lt)) {
+        // 词频加权
+        const count = (lowerText.match(new RegExp(lt, 'g')) || []).length;
+        score += count * 1.5; 
+      }
     }
-    return matches / Math.max(queryTokens.length, 1);
+    return Math.min(score / (queryTokens.length * 2), 1.0); // 归一化
   }
 
   tokenize(text) {
     if (!text) return [];
-    // 简单分词：中文按字/词切分，英文按空格，去除标点和停用词
-    const stopWords = new Set(['的', '了', '是', '在', '我', '你', '他', '她', '它', '们', '这', '那', '有', '和', '与', '也', '都', '就', '不', '吗', '呢', '吧', '啊', '哦', '嗯', '呀', '哈', 'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'to', 'of', 'and', 'in', 'on', 'at', 'for', 'with', 'i', 'you', 'he', 'she', 'it', 'we', 'they']);
+    const stopWords = new Set(['的', '了', '是', '在', '我', '你', '他', '她', '它', '们', '这', '那', '有', '和', '与', '也', '都', '就', '不', '吗', '呢', '吧', '啊', '哦', '嗯', '呀', '哈']);
     const tokens = [];
-    // 提取中文词组（2-4字）
-    const cnMatches = text.match(/[\u4e00-\u9fff]{2,4}/g) || [];
+    const cnMatches = text.match(/[\u4e00-\u9fff]{2,5}/g) || [];
     cnMatches.forEach(m => { if (!stopWords.has(m)) tokens.push(m); });
-    // 提取英文单词
     const enMatches = text.match(/[a-zA-Z]+/g) || [];
     enMatches.forEach(m => { if (m.length > 1 && !stopWords.has(m.toLowerCase())) tokens.push(m); });
-    // 提取数字（日期、金额等）
-    const numMatches = text.match(/\d+/g) || [];
-    numMatches.forEach(m => { if (m.length >= 2) tokens.push(m); });
     return [...new Set(tokens)];
   }
 
-  timeDecay(timestamp) {
-    const daysSince = (Date.now() - timestamp) / (1000 * 60 * 60 * 24);
+  timeDecay(memoryTime) {
+    const daysSince = (Date.now() - memoryTime) / (1000 * 60 * 60 * 24);
+    if (daysSince < 0) return 1.0; // 未来的计划不衰减
     // 半衰期30天的指数衰减
-    return Math.exp(-0.693 * daysSince / 30);
+    return Math.max(0.1, Math.exp(-0.693 * daysSince / 30));
   }
 
   async retrieveRelevant(chat, queryText, topN = null) {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     if (!vm.fragments.length) return [];
-    if (!topN) topN = vm.settings.topN || 8;
+    if (!topN) topN = vm.settings.topN || 10;
     
-    // 检索缓存机制
+    // 缓存机制
     if (vm.settings.retrievalCacheEnabled && vm._retrievalCache) {
       const cache = vm._retrievalCache;
-      const now = Date.now();
-      const cacheAge = (now - cache.timestamp) / 1000 / 60; // 分钟
+      const cacheAge = (Date.now() - cache.timestamp) / 1000 / 60; 
       const msgCountDiff = (chat.history?.length || 0) - cache.msgCount;
-      
-      // 如果query相同，且缓存未过期（10分钟），且新消息数少于设置的间隔，使用缓存
-      if (cache.query === queryText && 
-          cacheAge < 10 && 
-          msgCountDiff < (vm.settings.retrievalCacheInterval || 3) &&
-          cache.result) {
-        console.log('[向量记忆] 使用检索缓存');
-        // 更新召回统计
-        for (const r of cache.result) {
-          r.fragment.lastRecalled = Date.now();
-          r.fragment.recallCount = (r.fragment.recallCount || 0) + 1;
-        }
-        vm.stats.totalRecalls++;
+      if (cache.query === queryText && cacheAge < 10 && msgCountDiff < (vm.settings.retrievalCacheInterval || 3) && cache.result) {
         return cache.result;
       }
     }
     
     const weights = vm.settings.scoreWeights;
-
-    // 通道A：语义检索
     const queryEmbedding = await this.getEmbedding(queryText, chat);
-
-    // 通道B：关键词检索
     const queryTokens = this.tokenize(queryText);
 
-    // 评分
     const scored = vm.fragments.map(frag => {
-      const semanticScore = queryEmbedding && frag.embedding
-        ? this.cosineSimilarity(queryEmbedding, frag.embedding) : 0;
-      const keywordScore = this.keywordMatch(queryTokens, frag.tags || []);
-      // 也对内容做关键词匹配作为补充
-      const contentTokens = this.tokenize(frag.content);
-      const contentKeywordScore = this.keywordMatch(queryTokens, contentTokens);
-      const combinedKeyword = Math.max(keywordScore, contentKeywordScore * 0.7);
+      // 核心记忆 C 类直接满分，保证绝对不被遗忘
+      if (frag.category === 'C') {
+        return { fragment: frag, score: 999 };
+      }
 
-      const importanceScore = (frag.importance || 5) / 10;
+      // 语义得分
+      const semanticScore = queryEmbedding && frag.embedding ? this.cosineSimilarity(queryEmbedding, frag.embedding) : 0;
+      
+      // BM25 本地字面得分 (标签 + 内容)
+      const tagText = (frag.tags || []).join(' ');
+      const bm25Score = Math.max(this.bm25Match(queryTokens, tagText), this.bm25Match(queryTokens, frag.content) * 0.8);
+
+      // 绝对重要度 (8-10分有极大加权，抗衰减)
+      const importanceVal = frag.importance || 5;
+      let importanceScore = importanceVal / 10;
+      if (importanceVal >= 8) importanceScore *= 1.5; // 高光记忆放大
+
+      // 情绪分
       const emotionScore = (frag.emotionalWeight || 3) / 10;
-      const recencyScore = this.timeDecay(frag.createdAt);
+      
+      // 衰减分 (基于真实的 memoryTime)
+      let recencyScore = this.timeDecay(frag.memoryTime);
+      // 重要度极高的记忆抗衰减
+      if (importanceVal >= 9) recencyScore = 1.0; 
 
       const totalScore =
         semanticScore * (weights.semantic || 0.4) +
-        combinedKeyword * (weights.keyword || 0.3) +
-        importanceScore * (weights.importance || 0.15) +
-        emotionScore * (weights.emotion || 0.1) +
+        bm25Score * (weights.keyword || 0.3) +
+        importanceScore * (weights.importance || 0.2) +
+        emotionScore * (weights.emotion || 0.05) +
         recencyScore * (weights.recency || 0.05);
 
-      return { fragment: frag, score: totalScore, semanticScore, keywordScore: combinedKeyword };
+      return { fragment: frag, score: totalScore };
     });
 
-    // 排序取topN
     scored.sort((a, b) => b.score - a.score);
-    let results = scored.slice(0, topN);
+    // 过滤掉得分太低且不是核心的
+    let results = scored.slice(0, topN).filter(r => r.score > 0.1 || r.fragment.category === 'C');
 
-    // 拉取关联记忆
-    const resultIds = new Set(results.map(r => r.fragment.id));
-    const linkedToAdd = [];
-    for (const r of results) {
-      for (const linkedId of (r.fragment.linkedMemories || [])) {
-        if (!resultIds.has(linkedId)) {
-          const linked = vm.fragments.find(f => f.id === linkedId);
-          if (linked) {
-            linkedToAdd.push({ fragment: linked, score: r.score * 0.8, semanticScore: 0, keywordScore: 0 });
-            resultIds.add(linkedId);
-          }
-        }
-      }
-    }
-    results = results.concat(linkedToAdd);
-
-    // 更新召回统计
+    // 更新统计
     for (const r of results) {
       r.fragment.lastRecalled = Date.now();
       r.fragment.recallCount = (r.fragment.recallCount || 0) + 1;
     }
     vm.stats.totalRecalls++;
     
-    // 更新缓存
     if (vm.settings.retrievalCacheEnabled) {
-      vm._retrievalCache = {
-        query: queryText,
-        result: results,
-        timestamp: Date.now(),
-        msgCount: chat.history?.length || 0
-      };
+      vm._retrievalCache = { query: queryText, result: results, timestamp: Date.now(), msgCount: chat.history?.length || 0 };
     }
 
     return results;
-  }
-
-  // ==================== 主动回忆机制 ====================
-
-  getDateTriggeredMemories(chat) {
-    const vm = this.getVectorMemory(chat);
-    if (!vm.settings.enableDateTrigger) return [];
-    const now = new Date();
-    const todayMMDD = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-    const results = [];
-    for (const frag of vm.fragments) {
-      for (const tag of (frag.tags || [])) {
-        // 匹配日期标签如 "3月15日", "0315", "03-15"
-        const dateMatch = tag.match(/(\d{1,2})[月\-\/](\d{1,2})/);
-        if (dateMatch) {
-          const mm = String(dateMatch[1]).padStart(2, '0');
-          const dd = String(dateMatch[2]).padStart(2, '0');
-          if (mm + dd === todayMMDD) {
-            results.push(frag);
-            break;
-          }
-        }
-      }
-      // 检查周年纪念
-      if (frag.category === 'R' || frag.category === 'E') {
-        const fragDate = new Date(frag.createdAt);
-        if (fragDate.getMonth() === now.getMonth() && fragDate.getDate() === now.getDate() && fragDate.getFullYear() !== now.getFullYear()) {
-          if (!results.includes(frag)) results.push(frag);
-        }
-      }
-    }
-    return results;
-  }
-
-  // ==================== 时间线摘要（第三层） ====================
-
-  getTimelineSummary(chat) {
-    const vm = this.getVectorMemory(chat);
-    return vm.timelineSummaries || {};
-  }
-
-  updateTimelineSummary(chat, period, summary) {
-    const vm = this.getVectorMemory(chat);
-    vm.timelineSummaries[period] = { content: summary, updatedAt: Date.now() };
-  }
-
-  serializeTimelineSummary(chat) {
-    const summaries = this.getTimelineSummary(chat);
-    if (!Object.keys(summaries).length) return '';
-    let output = '## 最近动态\n';
-    const order = ['3h', '6h', '1d', '3d', '7d', '30d'];
-    const labels = { '3h': '最近3小时', '6h': '最近6小时', '1d': '今天', '3d': '最近3天', '7d': '最近一周', '30d': '最近一个月' };
-    for (const key of order) {
-      if (summaries[key] && summaries[key].content) {
-        output += `[${labels[key] || key}] ${summaries[key].content}\n`;
-      }
-    }
-    return output;
   }
 
   // ==================== 序列化为 Prompt ====================
 
   async serializeForPrompt(chat, recentMessages = '') {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     let output = '';
 
-    // 第一层：核心记忆（永远注入）
+    // 核心灵魂设定
     const coreStr = this.serializeCoreMemories(chat);
     if (coreStr) output += coreStr + '\n';
 
-    // 第二层：向量检索（按需注入）
+    // 动态向量检索
     if (recentMessages && vm.fragments.length > 0) {
       const results = await this.retrieveRelevant(chat, recentMessages);
-      if (results.length > 0) {
-        output += '## 相关记忆\n';
-        for (const r of results) {
-          const cat = this.CATEGORIES[r.fragment.category] || { icon: '-' };
-          // 优先显示对话时间，降级显示总结时间
-          let dateStr = '';
-          if (r.fragment.dialogueTimeRange && r.fragment.dialogueTimeRange.start) {
-            const formatted = this._formatDialogueTimeRange(r.fragment.dialogueTimeRange);
-            dateStr = formatted ? formatted.short : new Date(r.fragment.createdAt).toLocaleDateString('zh-CN');
-          } else {
-            dateStr = new Date(r.fragment.createdAt).toLocaleDateString('zh-CN');
-          }
-          output += `[${cat.icon}] ${r.fragment.content} (${dateStr})\n`;
+      // 过滤掉已经在核心里的
+      const nonCoreResults = results.filter(r => r.fragment.category !== 'C');
+      
+      if (nonCoreResults.length > 0) {
+        output += '## 回闪记忆 (根据当前情境唤醒的记忆片段)\n';
+        // 按时间发生顺序排序，让 AI 更有时间观念
+        nonCoreResults.sort((a, b) => a.fragment.memoryTime - b.fragment.memoryTime);
+        
+        const cats = this.getCategories(chat);
+        for (const r of nonCoreResults) {
+          const cat = cats[r.fragment.category] || { icon: '' };
+          const dateStr = new Date(r.fragment.memoryTime).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+          output += `[${dateStr}] ${r.fragment.content}\n`;
         }
         output += '\n';
       }
     }
 
-    // 主动回忆：日期触发
-    const dateTriggers = this.getDateTriggeredMemories(chat);
-    if (dateTriggers.length > 0) {
-      output += '## 今日相关记忆\n';
-      for (const frag of dateTriggers) {
-        const cat = this.CATEGORIES[frag.category] || { icon: '-' };
-        output += `[${cat.icon}] ${frag.content}\n`;
-      }
-      output += '\n';
-    }
-
-    // 第三层：时间线摘要
-    const timelineStr = this.serializeTimelineSummary(chat);
-    if (timelineStr) output += timelineStr + '\n';
-
     if (!output.trim()) output = '(暂无记忆)\n';
 
-    return `## 你的记忆档案（向量记忆系统）
-以下是根据当前对话智能检索出的相关记忆。你必须像读取自己的记忆一样理解这些数据，在对话中自然引用。
+    return `## 你的变量记忆档案
+[系统强制指令：你必须将以下提取出的记忆作为你真实的过去，并在对话中自然地表现出你记得这些事。]
 ${output}`;
   }
 
-  // ==================== AI 提取记忆 ====================
+  // ==================== AI 提取记忆 (修复间隔 Bug) ====================
 
   buildExtractionPrompt(chat, formattedHistory, timeRangeStr, dialogueTimeRange) {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     const userNickname = chat.settings.myNickname || (window.state?.qzoneSettings?.nickname || '用户');
+    
+    // 保存最新的消息索引用于后续更新
+    this._tempLastMsgIndex = chat.history ? chat.history.length - 1 : -1;
 
-    // 保存对话时间范围供后续使用
-    this._lastDialogueTimeRange = dialogueTimeRange;
-
-    let summarySettingContext = '';
-    if (window.state && window.state.worldBooks) {
-      const summaryWorldBook = window.state.worldBooks.find(wb => wb.name === '总结设定');
-      if (summaryWorldBook) {
-        const enabledEntries = summaryWorldBook.content.filter(e => e.enabled !== false).map(e => e.content).join('\n');
-        if (enabledEntries) summarySettingContext = `\n# 【总结规则 (最高优先级)】\n${enabledEntries}\n`;
-      }
-    }
-
-    // 用户自定义提取提示词
-    if (vm.settings.useCustomExtractionPrompt && vm.settings.customExtractionPrompt && vm.settings.customExtractionPrompt.trim()) {
+    if (vm.settings.useCustomExtractionPrompt && vm.settings.customExtractionPrompt?.trim()) {
       return vm.settings.customExtractionPrompt
         .replace(/\{\{角色名\}\}/g, chat.originalName || chat.name)
         .replace(/\{\{用户昵称\}\}/g, userNickname)
-        .replace(/\{\{用户人设\}\}/g, chat.settings.myPersona || '未设置')
-        .replace(/\{\{角色人设\}\}/g, chat.settings.aiPersona || '')
-        .replace(/\{\{时间范围\}\}/g, timeRangeStr)
-        .replace(/\{\{对话记录\}\}/g, formattedHistory)
-        .replace(/\{\{总结设定\}\}/g, summarySettingContext);
+        .replace(/\{\{对话记录\}\}/g, formattedHistory);
     }
 
-    return `${summarySettingContext}
+    return `
 # 你的任务
-你是"${chat.originalName || chat.name}"。请阅读下面的对话记录，提取【值得长期记忆】的信息，输出为JSON数组格式的记忆片段。
+你是"${chat.originalName || chat.name}"。请阅读下面的最新对话记录，提取【值得长期记忆】的增量信息，输出为JSON数组格式。
 
-# 对话时间范围
-${timeRangeStr}
-
-# 输出格式（严格遵守）
-你的回复必须是一个JSON数组，每个元素格式如下：
+# 输出格式（严格遵守JSON数组）
 \`\`\`json
 [
   {
-    "content": "记忆内容（简短但完整）",
-    "tags": ["关键词1", "关键词2", "关键词3"],
-    "category": "F/E/D/P/R/M",
+    "content": "记忆内容（第一人称，简短清晰，如：用户告诉我她今天升职了）",
+    "tags": ["升职", "开心", "工作"],
+    "category": "U/A/R/E/I/L/P/T/M/C",
     "importance": 1-10,
-    "emotionalWeight": 1-10,
-    "context": "当时的简短上下文"
+    "emotionalWeight": 1-10
   }
 ]
 \`\`\`
 
-# 分类说明
-- F = 偏好/事实（用户的喜好、习惯、个人信息）
-- E = 事件（发生了什么重要的事）
-- D = 重要决定
-- P = 计划/待办（未来要做的事）
-- R = 关系变化（关系状态的转折点）
-- M = 情绪节点（重要的情感时刻）
+# 10大精细分类说明
+- U = 用户设定 (用户的外貌/性格/喜好/身份等)
+- A = 角色设定 (你自己发生的改变)
+- R = 关系发展 (表白/吵架/亲密举动等里程碑)
+- E = 经历/事件 (共同经历的事情)
+- I = 物品/礼物 (送礼/买东西)
+- L = 地点/场景 (去过的重要地方)
+- P = 承诺/计划 (约定的未来事项)
+- T = 禁忌/规则 (雷区/规矩)
+- M = 情绪/心理 (强烈的情感流露/阴影)
+- C = 核心灵魂 (必须永远铭记的生死攸关的事)
 
-# tags 标签规则（非常重要）
-- 每条记忆必须有3-6个关键词标签
-- 标签要包含：人名、地点、物品、时间、情感、主题等
-- 如果涉及日期，标签中要包含日期（如"3月15日"、"周五"）
-- 标签越精准，未来检索越准确
+# 评分规则 (1-10)
+- importance: 8-10(极其重要/转折点)，5-7(值得记住)，1-4(日常琐事，尽量别记)
+- emotionalWeight: 情感的强烈程度。
 
-# importance 评分规则
-- 9-10：核心事实（生日、重要承诺、关系里程碑）
-- 7-8：重要事件（第一次做某事、重要决定）
-- 5-6：一般重要（偏好、习惯）
-- 3-4：次要信息（临时计划、一般事件）
-- 1-2：低重要度（可能有用但不关键）
-
-# emotionalWeight 评分规则
-- 9-10：强烈情感（表白、吵架、和好、感动落泪）
-- 7-8：明显情感（开心、难过、惊喜）
-- 5-6：一般情感
-- 3-4：轻微情感
-- 1-2：几乎无情感色彩
-
-# 提取规则
-1. 宁可少记，不要滥记
-2. 每条记忆都应该是"值得珍藏"的
-3. 不要记录日常问候、寒暄、临时闲聊
-4. 从"${chat.originalName || chat.name}"的第一人称视角记录
-5. 如果两条记忆有关联，在context中注明
-
-# 你的角色设定
-${chat.settings.aiPersona || '(未设置)'}
-
-# 你的聊天对象
-${userNickname}（人设：${chat.settings.myPersona || '未设置'}）
-
-# 待提取的对话记录
+# 待提取对话
 ${formattedHistory}
 
-请直接输出JSON数组，不要输出其他内容。如果没有值得记录的内容，输出空数组 []。`;
+请直接输出JSON数组，如果没有值得记录的内容，输出空数组 []。`;
   }
 
   parseExtractionResult(rawText) {
     try {
-      // 尝试提取JSON数组
       const jsonMatch = rawText.match(/\[[\s\S]*\]/);
       if (!jsonMatch) return [];
       const arr = JSON.parse(jsonMatch[0]);
       if (!Array.isArray(arr)) return [];
+      const cats = Object.keys(this.DEFAULT_CATEGORIES);
       return arr.filter(item => item && item.content).map(item => ({
         content: String(item.content).trim(),
         tags: Array.isArray(item.tags) ? item.tags.map(t => String(t).trim()) : [],
-        category: this.CATEGORIES[item.category] ? item.category : 'E',
+        category: cats.includes(item.category) ? item.category : 'E',
         importance: Math.min(10, Math.max(1, parseInt(item.importance) || 5)),
-        emotionalWeight: Math.min(10, Math.max(1, parseInt(item.emotionalWeight) || 3)),
-        context: item.context ? String(item.context).trim() : ''
+        emotionalWeight: Math.min(10, Math.max(1, parseInt(item.emotionalWeight) || 3))
       }));
     } catch (e) {
-      console.error('[向量记忆] 解析提取结果失败:', e);
+      console.error('[变量记忆] 解析提取结果失败:', e);
       return [];
     }
   }
 
   async mergeExtractedMemories(chat, extractedItems) {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     const newIds = [];
     
-    // 获取对话时间范围（从上次提取时保存的）
-    const dialogueTimeRange = this._lastDialogueTimeRange || null;
-    
     for (const item of extractedItems) {
-      // 去重：检查是否已有非常相似的记忆
-      const isDuplicate = vm.fragments.some(f => {
-        const contentSim = this._textSimilarity(f.content, item.content);
-        return contentSim > 0.8;
-      });
+      // 去重
+      const isDuplicate = vm.fragments.some(f => this.bm25Match(this.tokenize(item.content), f.content) > 0.8);
       if (isDuplicate) continue;
 
-      // 生成embedding
       const embedding = await this.getEmbedding(item.content, chat);
-
       const id = this.createFragment(chat, {
-        content: item.content,
-        tags: item.tags,
-        category: item.category,
-        importance: item.importance,
-        emotionalWeight: item.emotionalWeight,
+        ...item,
         embedding,
-        source: 'auto',
-        context: item.context,
-        dialogueTimeRange: dialogueTimeRange // 添加对话时间范围
+        memoryTime: Date.now() // 新提取的记忆发生时间默认为当前
       });
       newIds.push(id);
     }
-
-    // 自动关联：新记忆之间如果有共同标签，建立关联
-    for (let i = 0; i < newIds.length; i++) {
-      for (let j = i + 1; j < newIds.length; j++) {
-        const fragA = this.getFragment(chat, newIds[i]);
-        const fragB = this.getFragment(chat, newIds[j]);
-        if (fragA && fragB) {
-          const commonTags = (fragA.tags || []).filter(t => (fragB.tags || []).includes(t));
-          if (commonTags.length >= 2) {
-            if (!fragA.linkedMemories.includes(fragB.id)) fragA.linkedMemories.push(fragB.id);
-            if (!fragB.linkedMemories.includes(fragA.id)) fragB.linkedMemories.push(fragA.id);
-          }
-        }
-      }
+    
+    // 更新最后提取的消息索引 (修复每轮都提取的Bug)
+    if (this._tempLastMsgIndex !== undefined && this._tempLastMsgIndex !== -1) {
+      vm.settings.lastExtractedMsgIndex = this._tempLastMsgIndex;
     }
 
-    vm.lastExtractionTimestamp = Date.now();
     return newIds;
   }
 
-  _textSimilarity(a, b) {
-    if (!a || !b) return 0;
-    const setA = new Set(this.tokenize(a));
-    const setB = new Set(this.tokenize(b));
-    if (setA.size === 0 || setB.size === 0) return 0;
-    let intersection = 0;
-    for (const t of setA) { if (setB.has(t)) intersection++; }
-    return intersection / Math.max(setA.size, setB.size);
-  }
-
-  // ==================== 导入导出 ====================
-
-  exportMemory(chat) {
-    const vm = this.getVectorMemory(chat);
-    const exportData = {
-      version: '1.0',
-      exportedAt: Date.now(),
-      characterName: chat.originalName || chat.name,
-      coreMemories: vm.coreMemories,
-      fragments: vm.fragments.map(f => ({
-        ...f,
-        embedding: null, // 导出时不包含embedding，导入时重新生成
-        dialogueTimeRange: f.dialogueTimeRange || null // 保留对话时间范围
-      })),
-      timelineSummaries: vm.timelineSummaries,
-      settings: vm.settings,
-      _customCategories: vm._customCategories
-    };
-    return JSON.stringify(exportData, null, 2);
-  }
-
-  async importMemory(chat, jsonString, mode = 'merge') {
-    try {
-      const data = JSON.parse(jsonString);
-      if (!data.version) throw new Error('无效的向量记忆导出文件');
-
-      const vm = this.getVectorMemory(chat);
-
-      if (mode === 'replace') {
-        vm.coreMemories = data.coreMemories || [];
-        vm.fragments = [];
-        vm.timelineSummaries = data.timelineSummaries || {};
-      }
-
-      // 导入核心记忆
-      if (mode === 'merge' && data.coreMemories) {
-        for (const core of data.coreMemories) {
-          if (!vm.coreMemories.some(c => c.content === core.content)) {
-            vm.coreMemories.push({ ...core, id: 'core_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6) });
-          }
-        }
-      }
-
-      // 导入记忆片段（重新生成embedding）
-      if (data.fragments) {
-        let imported = 0;
-        for (const frag of data.fragments) {
-          const isDuplicate = vm.fragments.some(f => this._textSimilarity(f.content, frag.content) > 0.8);
-          if (isDuplicate && mode === 'merge') continue;
-
-          const embedding = await this.getEmbedding(frag.content, chat);
-          this.createFragment(chat, {
-            content: frag.content,
-            tags: frag.tags || [],
-            category: frag.category || 'E',
-            importance: frag.importance || 5,
-            emotionalWeight: frag.emotionalWeight || 3,
-            embedding,
-            linkedMemories: [],
-            source: 'import',
-            context: frag.context || '',
-            dialogueTimeRange: frag.dialogueTimeRange || null // 保留对话时间范围
-          });
-          imported++;
-        }
-        return imported;
-      }
-
-      // 导入设置
-      if (data.settings) {
-        vm.settings = { ...vm.settings, ...data.settings };
-      }
-      if (data._customCategories) {
-        vm._customCategories = { ...vm._customCategories, ...data._customCategories };
-      }
-
-      return data.fragments ? data.fragments.length : 0;
-    } catch (e) {
-      console.error('[向量记忆] 导入失败:', e);
-      throw e;
-    }
-  }
-
-  // ==================== 统计信息 ====================
-
+  // 获取状态和待提取信息
   getStats(chat) {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     const frags = vm.fragments || [];
-    const catCounts = {};
-    for (const f of frags) {
-      catCounts[f.category] = (catCounts[f.category] || 0) + 1;
-    }
-    const embeddedCount = frags.filter(f => f.embedding).length;
-    const avgImportance = frags.length > 0 ? (frags.reduce((s, f) => s + (f.importance || 5), 0) / frags.length).toFixed(1) : 0;
     
-    // 计算待提取消息数
-    const lastTimestamp = vm.lastExtractionTimestamp || 0;
-    const unextractedMessages = chat.history ? chat.history.filter(m => 
-      m.timestamp > lastTimestamp && 
-      (!m.isHidden || (m.role === 'system' && m.content && m.content.includes('内心独白')))
-    ).length : 0;
+    // 基于消息索引计算未提取消息数
+    const historyLen = chat.history ? chat.history.length : 0;
+    const lastIdx = vm.settings.lastExtractedMsgIndex !== undefined ? vm.settings.lastExtractedMsgIndex : -1;
+    const unextractedMessages = Math.max(0, historyLen - 1 - lastIdx);
     
-    // 自动提取间隔
-    const autoInterval = chat.settings?.autoMemoryInterval || 20;
+    const autoInterval = vm.settings.autoExtractionMsgInterval || 20;
     const remainingToAuto = Math.max(0, autoInterval - unextractedMessages);
     
-    // 上次提取时间
-    const lastExtractionTime = lastTimestamp > 0 ? this._formatTimeAgo(Date.now() - lastTimestamp) : '从未';
-    
-    // 向量化健康度
-    let embeddingHealth = 'unknown';
-    if (frags.length === 0) {
-      embeddingHealth = 'empty';
-    } else if (embeddedCount === frags.length) {
-      embeddingHealth = 'perfect';
-    } else if (embeddedCount > frags.length * 0.8) {
-      embeddingHealth = 'good';
-    } else if (embeddedCount > 0) {
-      embeddingHealth = 'partial';
-    } else {
-      embeddingHealth = 'failed';
-    }
-    
+    const embeddedCount = frags.filter(f => f.embedding).length;
+    let embeddingHealth = frags.length === 0 ? 'empty' : (embeddedCount === frags.length ? 'perfect' : (embeddedCount > 0 ? 'partial' : 'failed'));
+
     return {
       totalFragments: frags.length,
-      coreMemories: (vm.coreMemories || []).length,
+      coreMemories: frags.filter(f => f.category === 'C').length,
       embeddedCount,
-      embeddingPercent: frags.length > 0 ? Math.round(embeddedCount / frags.length * 100) : 0,
       embeddingHealth,
-      categoryCounts: catCounts,
-      avgImportance,
-      totalRecalls: vm.stats.totalRecalls || 0,
-      lastUpdated: vm.stats.lastUpdated || 0,
-      estimatedTokens: this.estimateTokens(chat),
-      topN: vm.settings.topN || 8,
       unextractedMessages,
       autoInterval,
-      remainingToAuto,
-      lastExtractionTime
+      remainingToAuto
     };
   }
-  
-  _formatTimeAgo(ms) {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    
-    if (days > 0) return `${days}天前`;
-    if (hours > 0) return `${hours}小时前`;
-    if (minutes > 0) return `${minutes}分钟前`;
-    return '刚刚';
-  }
 
-  estimateTokens(chat) {
-    const vm = this.getVectorMemory(chat);
-    // 核心记忆token
-    let total = (vm.coreMemories || []).reduce((s, m) => s + m.content.length, 0);
-    // 预估检索结果token（topN条）
-    const topN = vm.settings.topN || 8;
-    const frags = [...(vm.fragments || [])].sort((a, b) => (b.importance || 5) - (a.importance || 5));
-    const topFrags = frags.slice(0, topN);
-    total += topFrags.reduce((s, f) => s + f.content.length, 0);
-    // 时间线摘要
-    const summaries = vm.timelineSummaries || {};
-    for (const s of Object.values(summaries)) {
-      if (s && s.content) total += s.content.length;
-    }
-    return Math.ceil(total / 1.5);
-  }
-
-  // ==================== UI 渲染 ====================
+  // ==================== UI 面板渲染 ====================
 
   renderMemoryUI(chat, container) {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     const stats = this.getStats(chat);
     container.innerHTML = '';
 
-    // 工具栏
+    // 顶部工具栏
     const toolbar = document.createElement('div');
     toolbar.className = 'vm-toolbar';
     toolbar.innerHTML = `
       <button class="vm-toolbar-btn" id="vm-add-fragment-btn">添加记忆</button>
-      <button class="vm-toolbar-btn" id="vm-add-core-btn">添加核心记忆</button>
-      <button class="vm-toolbar-btn" id="vm-settings-btn">设置</button>
-      <button class="vm-toolbar-btn" id="vm-batch-toggle-btn">批量</button>
+      <button class="vm-toolbar-btn" id="vm-add-core-btn">添加核心</button>
       <div style="flex:1"></div>
-      <button class="vm-toolbar-btn" id="vm-export-btn">导出</button>
-      <button class="vm-toolbar-btn" id="vm-import-btn">导入</button>
-      <button class="vm-toolbar-btn vm-primary" id="vm-summary-btn">总结</button>
+      <button class="vm-toolbar-btn vm-primary" id="vm-summary-btn" title="剩余 ${stats.remainingToAuto} 条消息后自动触发">
+        提取记忆 (${stats.unextractedMessages}/${stats.autoInterval})
+      </button>
+      <button class="vm-toolbar-btn" id="vm-settings-btn">设置</button>
+      <button class="vm-toolbar-btn" id="vm-guide-btn">便携教程</button>
     `;
     container.appendChild(toolbar);
 
-    // 批量操作工具栏（默认隐藏）
-    const batchBar = document.createElement('div');
-    batchBar.className = 'vm-batch-toolbar';
-    batchBar.id = 'vm-batch-toolbar';
-    batchBar.style.display = 'none';
-    batchBar.innerHTML = `
-      <span class="vm-batch-count">已选 <span id="vm-batch-selected-count">0</span> 项</span>
-      <button class="vm-batch-btn" id="vm-batch-select-all-btn">全选</button>
-      <button class="vm-batch-btn" id="vm-batch-copy-btn">复制</button>
-      <button class="vm-batch-btn" id="vm-batch-export-btn">导出选中</button>
-      <button class="vm-batch-btn vm-batch-danger" id="vm-batch-delete-btn">删除选中</button>
-      <button class="vm-batch-btn" id="vm-batch-cancel-btn">取消</button>
-    `;
-    container.appendChild(batchBar);
-
-    // 统计栏
-    const statsBar = document.createElement('div');
-    statsBar.className = 'vm-stats';
+    // 记忆列表区
+    const listContainer = document.createElement('div');
+    listContainer.className = 'vm-list-container';
     
-    // 健康度图标
-    const healthIcons = {
-      'perfect': '✓',
-      'good': '✓',
-      'partial': '⚠',
-      'failed': '❌',
-      'empty': '-',
-      'unknown': '?'
-    };
-    const healthColors = {
-      'perfect': '#34c759',
-      'good': '#34c759',
-      'partial': '#ff9500',
-      'failed': '#ff3b30',
-      'empty': '#999',
-      'unknown': '#999'
-    };
-    const healthIcon = healthIcons[stats.embeddingHealth] || '?';
-    const healthColor = healthColors[stats.embeddingHealth] || '#999';
+    const categories = this.getCategories(chat);
     
-    let statsHtml = '<div class="vm-stats-row">';
-    statsHtml += `<span>核心 ${stats.coreMemories}条</span>`;
-    statsHtml += `<span>片段 ${stats.totalFragments}条</span>`;
-    statsHtml += `<span style="color:${healthColor}">向量化 ${healthIcon} ${stats.embeddedCount}/${stats.totalFragments} (${stats.embeddingPercent}%)</span>`;
-    statsHtml += `<span>每轮注入 ${stats.topN}条</span>`;
-    statsHtml += `<span>召回 ${stats.totalRecalls}次</span>`;
-    statsHtml += '</div>';
-    
-    // 第二行：提取状态
-    if (stats.totalFragments > 0 || stats.unextractedMessages > 0) {
-      statsHtml += '<div class="vm-stats-row" style="margin-top:4px;">';
-      statsHtml += `<span>上次提取 ${stats.lastExtractionTime}</span>`;
-      statsHtml += `<span>待提取 ${stats.unextractedMessages}条</span>`;
-      if (stats.remainingToAuto > 0) {
-        statsHtml += `<span>还差${stats.remainingToAuto}条自动提取</span>`;
-      } else if (stats.unextractedMessages >= stats.autoInterval) {
-        statsHtml += `<span style="color:#ff9500">⚠ 已达自动提取阈值</span>`;
-      }
-      statsHtml += `<span>≈ ${stats.estimatedTokens} tokens/轮</span>`;
-      statsHtml += '</div>';
-    }
-    
-    // 健康提示
-    if (stats.embeddingHealth === 'failed' && stats.totalFragments > 0) {
-      statsHtml += '<div class="vm-stats-row" style="margin-top:4px;">';
-      statsHtml += `<span style="color:#ff3b30;font-weight:500;">❌ 向量化失败，请检查Embedding API配置</span>`;
-      statsHtml += '</div>';
-    } else if (stats.embeddingHealth === 'partial') {
-      statsHtml += '<div class="vm-stats-row" style="margin-top:4px;">';
-      statsHtml += `<span style="color:#ff9500;">⚠ 部分记忆未向量化，建议在设置中重建向量</span>`;
-      statsHtml += '</div>';
-    }
-    
-    statsBar.innerHTML = statsHtml;
-    container.appendChild(statsBar);
-
-    // 核心记忆区
-    if (vm.coreMemories.length > 0) {
-      const coreSection = document.createElement('div');
-      coreSection.className = 'vm-section vm-core-section';
-      coreSection.innerHTML = `
-        <div class="vm-section-header">
-          <div class="vm-section-select-all vm-batch-element" data-type="core" style="display:none"></div>
-          <span class="vm-section-tag" style="background:#ff3b30">C</span>
-          <span class="vm-section-title">核心记忆（永久注入）</span>
-          <span class="vm-section-count">${vm.coreMemories.length}</span>
-        </div>
-      `;
-      const list = document.createElement('div');
-      list.className = 'vm-section-list';
-      vm.coreMemories.forEach((mem, idx) => {
-        const row = document.createElement('div');
-        row.className = 'vm-item-row';
-        row.innerHTML = `
-          <div class="vm-item-checkbox vm-batch-element" data-type="core" data-id="${mem.id}" style="display:none"></div>
-          <span class="vm-item-content">${this._escapeHtml(mem.content)}</span>
-          <div class="vm-item-actions">
-            <button class="vm-item-btn vm-edit-core-btn" data-id="${mem.id}" title="编辑">编辑</button>
-            <button class="vm-item-btn vm-delete-core-btn" data-id="${mem.id}" title="删除">删除</button>
-          </div>
-        `;
-        list.appendChild(row);
-      });
-      coreSection.appendChild(list);
-      container.appendChild(coreSection);
-    }
-
-    // 记忆片段区（按分类分组）
-    const categories = { ...this.CATEGORIES, ...(vm._customCategories || {}) };
+    // 按分类分组渲染
     for (const [code, catInfo] of Object.entries(categories)) {
       const frags = vm.fragments.filter(f => f.category === code);
-      if (frags.length === 0 && code !== 'C') continue;
-      if (code === 'C') continue; // 核心记忆已单独渲染
+      if (frags.length === 0) continue;
+      
+      // 按发生时间倒序排列
+      frags.sort((a, b) => b.memoryTime - a.memoryTime);
 
       const section = document.createElement('div');
       section.className = 'vm-section';
+      if (code === 'C') section.classList.add('vm-core-section');
+      
       section.innerHTML = `
         <div class="vm-section-header">
-          <div class="vm-section-select-all vm-batch-element" data-type="fragment" data-category="${code}" style="display:none"></div>
-          <span class="vm-section-tag" style="background:${catInfo.color || '#666'}">${code}</span>
+          <span class="vm-section-tag" style="background:${catInfo.color}">${code}</span>
           <span class="vm-section-title">${catInfo.name}</span>
           <span class="vm-section-count">${frags.length}</span>
         </div>
       `;
+      
       const list = document.createElement('div');
       list.className = 'vm-section-list';
-
-      // 按重要度排序
-      frags.sort((a, b) => (b.importance || 5) - (a.importance || 5));
-
+      
       frags.forEach(frag => {
         const row = document.createElement('div');
         row.className = 'vm-item-row';
         
-        // 优先显示对话时间，降级显示总结时间
-        let dateStr = '';
-        let dateTitle = '';
-        let timeIcon = '📅';
-        
-        if (frag.dialogueTimeRange && frag.dialogueTimeRange.start) {
-          const formatted = this._formatDialogueTimeRange(frag.dialogueTimeRange);
-          dateStr = formatted.short;
-          const summaryDate = new Date(frag.createdAt).toLocaleString('zh-CN');
-          dateTitle = `${formatted.full}\n总结时间: ${summaryDate}`;
-          timeIcon = '💬'; // 对话时间用对话图标
-        } else {
-          // 旧数据降级显示总结时间
-          dateStr = new Date(frag.createdAt).toLocaleDateString('zh-CN');
-          dateTitle = `总结时间: ${dateStr}`;
-          timeIcon = '📅'; // 总结时间用日历图标
-        }
-        
-        const embIcon = frag.embedding ? 'vec' : '!';
-        const tagsStr = (frag.tags || []).slice(0, 4).join(', ');
+        // 格式化时间为 datetime-local 可用的格式
+        const dateObj = new Date(frag.memoryTime);
+        // 处理时区偏移
+        const tzOffset = dateObj.getTimezoneOffset() * 60000;
+        const localISOTime = (new Date(dateObj - tzOffset)).toISOString().slice(0,16);
+
         row.innerHTML = `
-          <div class="vm-item-checkbox vm-batch-element" data-type="fragment" data-id="${frag.id}" style="display:none"></div>
           <div class="vm-item-main">
             <span class="vm-item-content">${this._escapeHtml(frag.content)}</span>
             <div class="vm-item-meta">
-              <span class="vm-meta-tag vm-meta-time" title="${dateTitle}">${timeIcon} ${dateStr}</span>
-              <span class="vm-meta-tag">${embIcon}</span>
-              <span class="vm-meta-tag">重要度:${frag.importance || 5}</span>
-              <span class="vm-meta-tag">情感:${frag.emotionalWeight || 3}</span>
-              ${tagsStr ? `<span class="vm-meta-tag">${tagsStr}</span>` : ''}
-              ${frag.recallCount > 0 ? `<span class="vm-meta-tag">召回${frag.recallCount}次</span>` : ''}
+              <input type="datetime-local" class="vm-time-picker" data-id="${frag.id}" value="${localISOTime}" title="修改记忆发生时间">
+              <span class="vm-meta-tag">重要度:${frag.importance}</span>
+              ${frag.embedding ? '<span class="vm-meta-tag" title="已向量化">Vector✓</span>' : '<span class="vm-meta-tag" style="color:#ff9500">BM25</span>'}
             </div>
           </div>
           <div class="vm-item-actions">
-            <button class="vm-item-btn vm-pin-btn" data-id="${frag.id}" title="钉选为核心记忆">PIN</button>
-            <button class="vm-item-btn vm-edit-frag-btn" data-id="${frag.id}" title="编辑">编辑</button>
-            <button class="vm-item-btn vm-delete-frag-btn" data-id="${frag.id}" title="删除">删除</button>
+            ${code !== 'C' ? `<button class="vm-item-btn vm-pin-btn" data-id="${frag.id}">置顶为核心</button>` : ''}
+            <button class="vm-item-btn vm-edit-frag-btn" data-id="${frag.id}">改内容</button>
+            <button class="vm-item-btn vm-delete-frag-btn" data-id="${frag.id}" style="color:#ff3b30">删</button>
           </div>
         `;
         list.appendChild(row);
       });
       section.appendChild(list);
-      container.appendChild(section);
+      listContainer.appendChild(section);
     }
 
-    // 空状态
-    if (vm.coreMemories.length === 0 && vm.fragments.length === 0) {
-      container.innerHTML += `
-        <div style="text-align:center; color: var(--text-secondary, #999); margin-top: 20px; padding: 20px;">
-          <p style="font-size: 24px; margin-bottom: 8px; color: var(--text-secondary, #999);">向量记忆</p>
-          <p>还没有向量记忆数据</p>
-          <p style="font-size: 12px; margin-top: 5px;">开启自动总结后，对话内容会自动提取为向量记忆</p>
-          <p style="font-size: 12px;">你也可以点击上方按钮手动添加</p>
+    if (vm.fragments.length === 0) {
+      listContainer.innerHTML = `
+        <div style="text-align:center; color: #999; padding: 40px 20px;">
+          <div style="font-size:40px; margin-bottom:10px;"></div>
+          <p style="font-size: 16px; font-weight:bold; color:#666;">变量记忆是空的</p>
+          <p style="font-size: 13px; margin-top: 5px;">继续聊天，当新消息达到 ${stats.autoInterval} 条时，系统会自动提取记忆。</p>
+          <p style="font-size: 13px;">你也可以手动点击上方按钮添加。</p>
         </div>
       `;
     }
+
+    container.appendChild(listContainer);
   }
 
-  _escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-  
-  // 格式化对话时间范围显示
-  _formatDialogueTimeRange(dialogueTimeRange) {
-    if (!dialogueTimeRange || !dialogueTimeRange.start) {
-      return null;
-    }
-    
-    const startDate = new Date(dialogueTimeRange.start);
-    const endDate = new Date(dialogueTimeRange.end);
-    const startStr = startDate.toLocaleDateString('zh-CN');
-    const endStr = endDate.toLocaleDateString('zh-CN');
-    
-    // 如果是同一天，只显示日期和时间范围
-    if (startStr === endStr) {
-      const startTime = startDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-      const endTime = endDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-      return {
-        short: `${startStr} ${startTime}-${endTime}`,
-        full: `对话时间: ${startStr} ${startTime}-${endTime}`
-      };
-    } else {
-      // 跨天显示完整时间
-      const startFull = startDate.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-      const endFull = endDate.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-      return {
-        short: `${startStr} - ${endStr}`,
-        full: `对话时间: ${startFull} - ${endFull}`
-      };
-    }
-  }
-
-  // ==================== 默认提取提示词模板 ====================
-
-  getDefaultExtractionPrompt() {
-    return `{{总结设定}}
-# 你的任务
-你是"{{角色名}}"。请阅读下面的对话记录，提取【值得长期记忆】的信息，输出为JSON数组格式的记忆片段。
-
-# 对话时间范围
-{{时间范围}}
-
-# 输出格式（严格遵守）
-你的回复必须是一个JSON数组，每个元素格式如下：
-\`\`\`json
-[
-  {
-    "content": "记忆内容（简短但完整）",
-    "tags": ["关键词1", "关键词2", "关键词3"],
-    "category": "F/E/D/P/R/M",
-    "importance": 1-10,
-    "emotionalWeight": 1-10,
-    "context": "当时的简短上下文"
-  }
-]
-\`\`\`
-
-# 分类说明
-- F = 偏好/事实（用户的喜好、习惯、个人信息）
-- E = 事件（发生了什么重要的事）
-- D = 重要决定
-- P = 计划/待办（未来要做的事）
-- R = 关系变化（关系状态的转折点）
-- M = 情绪节点（重要的情感时刻）
-
-# tags 标签规则（非常重要）
-- 每条记忆必须有3-6个关键词标签
-- 标签要包含：人名、地点、物品、时间、情感、主题等
-- 如果涉及日期，标签中要包含日期（如"3月15日"、"周五"）
-- 标签越精准，未来检索越准确
-
-# importance 评分规则
-- 9-10：核心事实（生日、重要承诺、关系里程碑）
-- 7-8：重要事件（第一次做某事、重要决定）
-- 5-6：一般重要（偏好、习惯）
-- 3-4：次要信息（临时计划、一般事件）
-- 1-2：低重要度（可能有用但不关键）
-
-# emotionalWeight 评分规则
-- 9-10：强烈情感（表白、吵架、和好、感动落泪）
-- 7-8：明显情感（开心、难过、惊喜）
-- 5-6：一般情感
-- 3-4：轻微情感
-- 1-2：几乎无情感色彩
-
-# 提取规则
-1. 宁可少记，不要滥记
-2. 每条记忆都应该是"值得珍藏"的
-3. 不要记录日常问候、寒暄、临时闲聊
-4. 从"{{角色名}}"的第一人称视角记录
-5. 如果两条记忆有关联，在context中注明
-
-# 你的角色设定
-{{角色人设}}
-
-# 你的聊天对象
-{{用户昵称}}（人设：{{用户人设}}）
-
-# 待提取的对话记录
-{{对话记录}}
-
-请直接输出JSON数组，不要输出其他内容。如果没有值得记录的内容，输出空数组 []。`;
-  }
-
-  // ==================== 设置面板渲染 ====================
+  // ==================== 设置面板 ====================
 
   renderSettingsPanel(chat) {
-    const vm = this.getVectorMemory(chat);
+    const vm = this.getVariableMemory(chat);
     const s = vm.settings;
-    const defaultPrompt = this.getDefaultExtractionPrompt();
-    const promptContent = s.customExtractionPrompt || defaultPrompt;
     return `
       <div class="vm-settings-panel">
         <div class="vm-settings-group">
-          <h4>检索设置</h4>
+          <h4>提取与触发规则</h4>
           <div class="vm-setting-item">
-            <label>每轮对话注入记忆数量 (Top N)</label>
-            <input type="number" id="vm-topn" value="${s.topN || 8}" min="1" max="30" class="vm-input">
-            <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:4px;">每次AI回复时，从记忆库中检索最相关的N条记忆注入到上下文。数量越大AI记得越多，但消耗token也越多。建议：记忆少时5-8条，记忆多时10-15条。</div>
-          </div>
-          <div class="vm-setting-item" style="margin-top:12px;">
-            <label>检索策略</label>
-            <select id="vm-retrieval-strategy" class="vm-input-full" style="margin-top:4px;">
-              <option value="user-only" ${s.retrievalStrategy === 'user-only' ? 'selected' : ''}>仅用户消息（推荐）</option>
-              <option value="user-weighted" ${s.retrievalStrategy === 'user-weighted' ? 'selected' : ''}>用户消息优先</option>
-              <option value="mixed" ${s.retrievalStrategy === 'mixed' ? 'selected' : ''}>混合模式</option>
-            </select>
-            <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:4px;">
-              <div>• 仅用户消息：只用用户的话作为检索关键词（避免角色连发导致检索偏差）</div>
-              <div>• 用户消息优先：用户消息权重高，角色消息权重低</div>
-              <div>• 混合模式：用户和角色消息混合（兼容旧版）</div>
-            </div>
-          </div>
-          <div class="vm-setting-item" id="vm-user-msg-count-group" style="margin-top:12px;display:${s.retrievalStrategy === 'user-only' ? 'block' : 'none'};">
-            <label>检索用户最近几条消息</label>
-            <input type="number" id="vm-user-msg-count" value="${s.retrievalUserMsgCount || 3}" min="1" max="10" class="vm-input">
-            <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:4px;">用用户最近N条消息作为检索关键词。建议3-5条。</div>
-          </div>
-          <div class="vm-setting-row" style="margin-top:12px;">
-            <span>启用检索缓存</span>
-            <label class="toggle-switch"><input type="checkbox" id="vm-retrieval-cache" ${s.retrievalCacheEnabled ? 'checked' : ''}><span class="slider"></span></label>
-          </div>
-          <div id="vm-cache-interval-group" style="display:${s.retrievalCacheEnabled ? 'block' : 'none'};margin-top:8px;">
-            <label>每N条新消息重新检索</label>
-            <input type="number" id="vm-cache-interval" value="${s.retrievalCacheInterval || 3}" min="1" max="20" class="vm-input">
-            <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:4px;">如果话题没变，可以复用上次检索结果，节省API调用。建议3-5条。</div>
-          </div>
-          <div class="vm-setting-item" style="margin-top:12px;">
-            <label>评分权重</label>
-            <div class="vm-weights">
-              <div><span>语义相似度</span><input type="number" id="vm-w-semantic" value="${s.scoreWeights.semantic}" min="0" max="1" step="0.05" class="vm-input-sm"></div>
-              <div><span>关键词匹配</span><input type="number" id="vm-w-keyword" value="${s.scoreWeights.keyword}" min="0" max="1" step="0.05" class="vm-input-sm"></div>
-              <div><span>重要度</span><input type="number" id="vm-w-importance" value="${s.scoreWeights.importance}" min="0" max="1" step="0.05" class="vm-input-sm"></div>
-              <div><span>情感权重</span><input type="number" id="vm-w-emotion" value="${s.scoreWeights.emotion}" min="0" max="1" step="0.05" class="vm-input-sm"></div>
-              <div><span>时间衰减</span><input type="number" id="vm-w-recency" value="${s.scoreWeights.recency}" min="0" max="1" step="0.05" class="vm-input-sm"></div>
-            </div>
-            <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:4px;">调整各项权重来控制记忆检索的优先级。总和建议为1.0。</div>
+            <label>多少条新消息自动提取一次？</label>
+            <input type="number" id="vm-auto-interval" value="${s.autoExtractionMsgInterval || 20}" min="5" max="100" class="vm-input-full">
+            <div style="font-size:11px;color:#999;margin-top:4px;">不用担心刷屏！现在基于绝对消息数量触发，严格锁定。</div>
           </div>
         </div>
+
         <div class="vm-settings-group">
-          <h4>Embedding 设置</h4>
+          <h4>检索引擎调参</h4>
+          <div class="vm-setting-item">
+            <label>每轮注入 AI 脑海的记忆数 (Top N)</label>
+            <input type="number" id="vm-topn" value="${s.topN || 10}" min="1" max="30" class="vm-input-full">
+          </div>
+          <div class="vm-setting-item" style="margin-top:12px;">
+            <label>多维打分权重分布</label>
+            <div class="vm-weights">
+              <div><span>语义(Vector)</span><input type="number" id="vm-w-semantic" value="${s.scoreWeights.semantic}" step="0.1" class="vm-input-sm"></div>
+              <div><span>字面(BM25)</span><input type="number" id="vm-w-keyword" value="${s.scoreWeights.keyword}" step="0.1" class="vm-input-sm"></div>
+              <div><span>重要度(Importance)</span><input type="number" id="vm-w-importance" value="${s.scoreWeights.importance}" step="0.1" class="vm-input-sm"></div>
+              <div><span>时间衰减(Decay)</span><input type="number" id="vm-w-recency" value="${s.scoreWeights.recency}" step="0.1" class="vm-input-sm"></div>
+            </div>
+            <div style="font-size:11px;color:#999;margin-top:4px;">注意：如果无 Embedding API，系统会自动用 BM25 算法替代，依然精准！核心记忆(C类)永远是满分免疫衰减。</div>
+          </div>
+        </div>
+
+        <div class="vm-settings-group">
+          <h4>向量化端点 (可选)</h4>
           <div class="vm-setting-row">
-            <span>使用自定义 Embedding 端点</span>
+            <span>开启自定义 Embedding</span>
             <label class="toggle-switch"><input type="checkbox" id="vm-custom-embedding" ${s.useCustomEmbedding ? 'checked' : ''}><span class="slider"></span></label>
           </div>
-          <div id="vm-custom-embedding-fields" style="display:${s.useCustomEmbedding ? 'block' : 'none'}">
-            <div class="vm-setting-item">
-              <label>Embedding API 地址</label>
-              <input type="text" id="vm-embedding-endpoint" value="${s.embeddingEndpoint || ''}" placeholder="https://api.openai.com" class="vm-input-full">
-            </div>
-            <div class="vm-setting-item">
-              <label>Embedding API Key（留空则使用主API Key）</label>
-              <input type="password" id="vm-embedding-apikey" value="${s.embeddingApiKey || ''}" placeholder="留空使用主API Key" class="vm-input-full">
-            </div>
-            <div class="vm-setting-item">
-              <label>Embedding 模型</label>
-              <div style="display:flex;gap:6px;margin-top:4px;">
-                <input type="text" id="vm-embedding-model" value="${s.embeddingModel || 'text-embedding-3-small'}" class="vm-input-full" style="flex:1;">
-                <button id="vm-fetch-models-btn" style="padding:6px 12px;border:1px solid var(--border-color,#ddd);background:var(--card-bg,#fff);border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap;color:var(--text-primary,#333);">拉取模型</button>
-              </div>
-              <div id="vm-models-list" style="display:none;margin-top:6px;max-height:200px;overflow-y:auto;border:1px solid var(--border-color,#ddd);border-radius:8px;background:var(--card-bg,#fff);"></div>
-            </div>
-          </div>
-          <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:8px;">如果不配置，将使用主API或副API的embedding接口。如果向量化失败，请检查API是否支持embedding。</div>
-        </div>
-        <div class="vm-settings-group">
-          <h4>主动回忆</h4>
-          <div class="vm-setting-row">
-            <span>日期/纪念日触发</span>
-            <label class="toggle-switch"><input type="checkbox" id="vm-date-trigger" ${s.enableDateTrigger ? 'checked' : ''}><span class="slider"></span></label>
-          </div>
-          <div class="vm-setting-row">
-            <span>情感变化触发</span>
-            <label class="toggle-switch"><input type="checkbox" id="vm-emotion-trigger" ${s.enableEmotionTrigger ? 'checked' : ''}><span class="slider"></span></label>
-          </div>
-          <div class="vm-setting-row">
-            <span>话题漂移触发</span>
-            <label class="toggle-switch"><input type="checkbox" id="vm-topic-trigger" ${s.enableTopicTrigger ? 'checked' : ''}><span class="slider"></span></label>
-          </div>
-          <div class="vm-setting-row">
-            <span>定期复习</span>
-            <label class="toggle-switch"><input type="checkbox" id="vm-periodic-review" ${s.enablePeriodicReview ? 'checked' : ''}><span class="slider"></span></label>
-          </div>
-          <div class="vm-setting-item" id="vm-review-interval-group" style="display:${s.enablePeriodicReview ? 'block' : 'none'}">
-            <label>复习间隔（天）</label>
-            <input type="number" id="vm-review-interval" value="${s.reviewIntervalDays || 7}" min="1" max="90" class="vm-input">
+          <div id="vm-custom-embedding-fields" style="display:${s.useCustomEmbedding ? 'block' : 'none'}; margin-top:8px;">
+            <input type="text" id="vm-embedding-endpoint" value="${s.embeddingEndpoint || ''}" placeholder="https://api.openai.com" class="vm-input-full">
+            <input type="text" id="vm-embedding-model" value="${s.embeddingModel || 'text-embedding-3-small'}" placeholder="Model Name" class="vm-input-full" style="margin-top:4px;">
           </div>
         </div>
-        <div class="vm-settings-group">
-          <h4>自定义提取提示词</h4>
-          <div class="vm-setting-row">
-            <span>使用自定义提取提示词</span>
-            <label class="toggle-switch"><input type="checkbox" id="vm-custom-prompt" ${s.useCustomExtractionPrompt ? 'checked' : ''}><span class="slider"></span></label>
-          </div>
-          <div id="vm-custom-prompt-field" style="display:${s.useCustomExtractionPrompt ? 'block' : 'none'}">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;">
-              <span style="font-size:12px;color:var(--text-secondary,#999);">可用变量：{{角色名}} {{用户昵称}} {{用户人设}} {{角色人设}} {{时间范围}} {{对话记录}} {{总结设定}}</span>
-              <button id="vm-reset-prompt-btn" style="padding:4px 10px;border:1px solid var(--border-color,#ddd);background:var(--card-bg,#fff);border-radius:6px;font-size:12px;cursor:pointer;color:var(--text-secondary,#666);white-space:nowrap;margin-left:8px;">重置为默认</button>
-            </div>
-            <textarea id="vm-custom-prompt-text" class="vm-textarea" style="min-height:200px;">${this._escapeHtml(promptContent)}</textarea>
-          </div>
-        </div>
+
         <button id="vm-save-settings-btn" class="vm-btn-primary" style="width:100%;margin-top:12px;">保存设置</button>
       </div>
     `;
   }
 
   saveSettingsFromUI(chat) {
-    const vm = this.getVectorMemory(chat);
-    vm.settings.topN = parseInt(document.getElementById('vm-topn')?.value) || 8;
-    vm.settings.retrievalStrategy = document.getElementById('vm-retrieval-strategy')?.value || 'user-only';
-    vm.settings.retrievalUserMsgCount = parseInt(document.getElementById('vm-user-msg-count')?.value) || 3;
-    vm.settings.retrievalCacheEnabled = document.getElementById('vm-retrieval-cache')?.checked || false;
-    vm.settings.retrievalCacheInterval = parseInt(document.getElementById('vm-cache-interval')?.value) || 3;
+    const vm = this.getVariableMemory(chat);
+    vm.settings.autoExtractionMsgInterval = parseInt(document.getElementById('vm-auto-interval')?.value) || 20;
+    vm.settings.topN = parseInt(document.getElementById('vm-topn')?.value) || 10;
     vm.settings.scoreWeights = {
       semantic: parseFloat(document.getElementById('vm-w-semantic')?.value) || 0.4,
       keyword: parseFloat(document.getElementById('vm-w-keyword')?.value) || 0.3,
-      importance: parseFloat(document.getElementById('vm-w-importance')?.value) || 0.15,
-      emotion: parseFloat(document.getElementById('vm-w-emotion')?.value) || 0.1,
-      recency: parseFloat(document.getElementById('vm-w-recency')?.value) || 0.05
+      importance: parseFloat(document.getElementById('vm-w-importance')?.value) || 0.2,
+      recency: parseFloat(document.getElementById('vm-w-recency')?.value) || 0.05,
+      emotion: 0.05
     };
     vm.settings.useCustomEmbedding = document.getElementById('vm-custom-embedding')?.checked || false;
     vm.settings.embeddingEndpoint = document.getElementById('vm-embedding-endpoint')?.value || '';
-    vm.settings.embeddingApiKey = document.getElementById('vm-embedding-apikey')?.value || '';
     vm.settings.embeddingModel = document.getElementById('vm-embedding-model')?.value || 'text-embedding-3-small';
-    vm.settings.enableDateTrigger = document.getElementById('vm-date-trigger')?.checked || false;
-    vm.settings.enableEmotionTrigger = document.getElementById('vm-emotion-trigger')?.checked || false;
-    vm.settings.enableTopicTrigger = document.getElementById('vm-topic-trigger')?.checked || false;
-    vm.settings.enablePeriodicReview = document.getElementById('vm-periodic-review')?.checked || false;
-    vm.settings.reviewIntervalDays = parseInt(document.getElementById('vm-review-interval')?.value) || 7;
-    vm.settings.useCustomExtractionPrompt = document.getElementById('vm-custom-prompt')?.checked || false;
-    vm.settings.customExtractionPrompt = document.getElementById('vm-custom-prompt-text')?.value || '';
     
-    // 清空检索缓存（因为设置变了）
-    if (vm._retrievalCache) {
-      vm._retrievalCache = { query: '', result: null, timestamp: 0, msgCount: 0 };
-    }
+    if (vm._retrievalCache) vm._retrievalCache = { query: '', result: null, timestamp: 0, msgCount: 0 };
   }
 
-  // ==================== 重建所有 Embedding ====================
+  // ==================== 便携小白教程 ====================
 
-  async fetchAvailableModels(chat) {
-    const vm = this.getVectorMemory(chat);
-    const apiConfig = window.state?.apiConfig || {};
-    let endpoint, apiKey;
+  renderGuide() {
+    return `
+      <div class="vm-guide">
+        <div style="text-align:center; margin-bottom:20px;">
+          <h3 style="font-size:18px; color:#333;">变量记忆 小白指南</h3>
+          <p style="font-size:13px; color:#666;">彻底治愈 AI 的“失忆症”</p>
+        </div>
 
-    if (vm.settings.useCustomEmbedding && vm.settings.embeddingEndpoint) {
-      endpoint = document.getElementById('vm-embedding-endpoint')?.value || vm.settings.embeddingEndpoint;
-      apiKey = document.getElementById('vm-embedding-apikey')?.value || vm.settings.embeddingApiKey || apiConfig.apiKey;
-    } else {
-      const useSecondary = apiConfig.secondaryProxyUrl && apiConfig.secondaryApiKey;
-      endpoint = useSecondary ? apiConfig.secondaryProxyUrl : apiConfig.proxyUrl;
-      apiKey = useSecondary ? apiConfig.secondaryApiKey : apiConfig.apiKey;
-    }
+        <div class="vm-guide-card">
+          <div class="vm-guide-card-title">什么是“变量记忆”？</div>
+          <p>它是原本“向量记忆”的究极进化版。你不用再管那些晦涩的“向量”、“语义”词汇，把它当成 AI 的**私人日记本**就行了。</p>
+        </div>
 
-    if (!endpoint || !apiKey) throw new Error('未配置API地址或Key');
+        <div class="vm-guide-card">
+          <div class="vm-guide-card-title">随意穿梭时间！(重磅功能)</div>
+          <p>在记忆列表中，你看到那个日期框了吗？**点它！可以直接改！**</p>
+          <p>把时间改到“10年前”，这就会成为你们十年前的初遇记忆；把时间改到“明天”，AI 就会知道这是你们明天的计划。</p>
+        </div>
 
-    const url = endpoint.endsWith('/') ? endpoint + 'v1/models' : endpoint + '/v1/models';
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${apiKey}` }
-    });
+        <div class="vm-guide-card">
+          <div class="vm-guide-card-title">它怎么自动记东西？</div>
+          <p>什么都不用管！只要你在一直聊天，每聊满 20 句话（设置里可改），系统就会在后台悄悄把值得记住的事写进日记里。完全无感！</p>
+        </div>
 
-    if (!response.ok) throw new Error(`API返回 ${response.status}`);
-    const data = await response.json();
-    const models = (data.data || data || []).map(m => typeof m === 'string' ? m : m.id).filter(Boolean);
+        <div class="vm-guide-card">
+          <div class="vm-guide-card-title">什么是“核心灵魂”？</div>
+          <p>分类为【C 核心灵魂】的记忆是无敌的！它们拥有最高权重，永远不会随时间衰减，AI 每一轮都会死死记住它。适合用来写你们的“终极人设”或“生死约定”。</p>
+        </div>
 
-    // 排序：embedding相关的排前面
-    const embeddingKeywords = ['embed', 'embedding', 'text-embedding', 'bge', 'e5', 'gte', 'jina'];
-    models.sort((a, b) => {
-      const aIsEmb = embeddingKeywords.some(k => a.toLowerCase().includes(k));
-      const bIsEmb = embeddingKeywords.some(k => b.toLowerCase().includes(k));
-      if (aIsEmb && !bIsEmb) return -1;
-      if (!aIsEmb && bIsEmb) return 1;
-      return a.localeCompare(b);
-    });
-
-    return models;
+        <div class="vm-guide-card">
+          <div class="vm-guide-card-title">没配置 API 怎么办？</div>
+          <p>完全没关系！如果向量化失败，系统会自动无缝切换为 **本地字面量（BM25）超强检索**，不仅不用消耗 API，找东西依然准得离谱。</p>
+        </div>
+      </div>
+    `;
   }
 
-  async rebuildAllEmbeddings(chat, progressCallback) {
-    const vm = this.getVectorMemory(chat);
-    const total = vm.fragments.length;
-    let done = 0;
-    for (const frag of vm.fragments) {
-      frag.embedding = await this.getEmbedding(frag.content, chat);
-      done++;
-      if (progressCallback) progressCallback(done, total);
-    }
-    return done;
-  }
-
-  // ==================== 批量操作 ====================
-
-  exportSelected(chat, selectedItems) {
-    const vm = this.getVectorMemory(chat);
-    const exportData = {
-      version: '1.0',
-      type: 'vector-memory-partial',
-      exportedAt: Date.now(),
-      characterName: chat.originalName || chat.name,
-      coreMemories: [],
-      fragments: []
-    };
-
-    for (const item of selectedItems) {
-      if (item.type === 'core') {
-        const mem = vm.coreMemories.find(m => m.id === item.id);
-        if (mem) exportData.coreMemories.push({ ...mem });
-      } else if (item.type === 'fragment') {
-        const frag = vm.fragments.find(f => f.id === item.id);
-        if (frag) exportData.fragments.push({ ...frag, embedding: null });
-      }
-    }
-    return JSON.stringify(exportData, null, 2);
-  }
-
-  batchDelete(chat, selectedItems) {
-    const vm = this.getVectorMemory(chat);
-    for (const item of selectedItems) {
-      if (item.type === 'core') {
-        this.deleteCoreMemory(chat, item.id);
-      } else if (item.type === 'fragment') {
-        this.deleteFragment(chat, item.id);
-      }
-    }
-  }
-
-  getSelectedItemsText(chat, selectedItems) {
-    const vm = this.getVectorMemory(chat);
-    const lines = [];
-    for (const item of selectedItems) {
-      if (item.type === 'core') {
-        const mem = vm.coreMemories.find(m => m.id === item.id);
-        if (mem) lines.push(`[核心] ${mem.content}`);
-      } else if (item.type === 'fragment') {
-        const frag = vm.fragments.find(f => f.id === item.id);
-        if (frag) lines.push(`[${frag.category || 'E'}] ${frag.content}`);
-      }
-    }
-    return lines.join('\n');
+  // 工具函数
+  _escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 }
 
-// 全局实例
-window.vectorMemoryManager = new VectorMemoryManager();
+// 绑定全局变量（覆盖旧版，全面接管）
+window.vectorMemoryManager = new VariableMemoryManager();

@@ -1178,9 +1178,9 @@ window.initEventBindingsA = async function(state, db) {
           }
         } else if (mode === 'vector' && chat.longTermMemory && chat.longTermMemory.length > 0 && window.vectorMemoryManager) {
           const confirmed = await showCustomConfirm(
-            '转换长期记忆',
-            `检测到你有 ${chat.longTermMemory.length} 条长期记忆（日记模式）。是否将它们自动转换为向量记忆（逐条生成片段）？\n\n注意：这会调用 embedding 模型消耗一定额度。`,
-            { confirmButtonText: '立即转换', cancelButtonText: '暂不转换' }
+            '批量转换长期记忆',
+            '检测到尚未转换的旧版长期记忆。\n是否将其转换为变量记忆（可能会消耗较多API额度）？',
+            { confirmText: '立即转换' }
           );
           if (confirmed) {
             showToast('正在转换长期记忆...', 'info');
@@ -2062,6 +2062,9 @@ window.initEventBindingsA = async function(state, db) {
       state.globalSettings.chatRenderWindow = parseInt(document.getElementById('chat-render-window-input').value) || 50;
       state.globalSettings.chatListRenderWindow = parseInt(document.getElementById('chat-list-render-window-input').value) || 30;
       state.globalSettings.apiTemperature = parseFloat(document.getElementById('api-temperature-slider').value);
+            state.globalSettings.apiTopP = parseFloat(document.getElementById('api-top-p-slider').value);
+            state.globalSettings.apiPresencePenalty = parseFloat(document.getElementById('api-presence-penalty-slider').value);
+            state.globalSettings.apiFrequencyPenalty = parseFloat(document.getElementById('api-frequency-penalty-slider').value);
       
       // 方案4：保存API历史记录开关状态
       const apiHistorySwitch = document.getElementById('enable-api-history-switch');

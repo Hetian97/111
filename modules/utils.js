@@ -807,8 +807,9 @@ async function calculateCurrentContextTokens() {
   if (memMode === 'vector' && window.vectorMemoryManager) {
     // 向量记忆：估算核心记忆 + topN片段的token
     fullContextString += window.vectorMemoryManager.serializeCoreMemories(chat);
-    const topN = chat.vectorMemory?.settings?.topN || 8;
-    const frags = [...(chat.vectorMemory?.fragments || [])].sort((a, b) => (b.importance || 5) - (a.importance || 5)).slice(0, topN);
+    const vm = window.vectorMemoryManager.getVariableMemory(chat);
+    const topN = vm?.settings?.topN || 8;
+    const frags = [...(vm?.fragments || [])].sort((a, b) => (b.importance || 5) - (a.importance || 5)).slice(0, topN);
     fullContextString += frags.map(f => f.content).join('\n');
   } else if ((memMode === 'structured' || chat.settings.enableStructuredMemory) && window.structuredMemoryManager) {
     fullContextString += window.structuredMemoryManager.serializeForPrompt(chat);

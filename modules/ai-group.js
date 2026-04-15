@@ -1409,7 +1409,7 @@ ${longTermMemoryContext}
         # 长期记忆 (最高优先级，这是群内已经确立的事实，所有角色必须严格遵守)
         ${(() => {
           const memMode = chat.settings?.memoryMode || (chat.settings?.enableStructuredMemory ? 'structured' : 'diary');
-          if (memMode === 'vector') return '(群聊自身的向量记忆 - 由检索引擎动态注入)';
+          if (memMode === 'vector') return '(群聊自身的变量记忆 - 由检索引擎动态注入)';
           if (memMode === 'structured' && window.structuredMemoryManager) return window.structuredMemoryManager.serializeForPrompt(chat);
           return chat.longTermMemory && chat.longTermMemory.length > 0 ? chat.longTermMemory.map(mem => `- ${mem.content}`).join('\n') : '- (暂无)';
         })()}       
