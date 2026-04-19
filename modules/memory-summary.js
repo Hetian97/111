@@ -510,7 +510,14 @@ function renderStructuredMemoryView() {
       const category = btn.dataset.category;
       const index = parseInt(btn.dataset.index);
       const row = btn.closest('.sm-item-row');
-      const currentContent = row.querySelector('.sm-item-content').textContent;
+      let currentContent = row.querySelector('.sm-item-content').textContent;
+      
+      // 优先使用保存的原始文本（如E分类去除了前缀年月的文本）
+      if (btn.hasAttribute('data-raw')) {
+        currentContent = btn.getAttribute('data-raw');
+        // 将可能存在的转移字符转回
+        currentContent = currentContent.replace(/"/g, '"').replace(/&#39;/g, "'");
+      }
       
       const newContent = await showCustomPrompt('编辑记忆条目', '修改内容：', currentContent);
       if (newContent !== null && newContent.trim() !== '') {
@@ -1129,7 +1136,9 @@ async function executeVectorExtraction(chat, messages, updateTimestamp = false) 
 
   const extracted = window.vectorMemoryManager.parseExtractionResult(rawText);
   if (extracted.length > 0) {
-    const newIds = await window.vectorMemoryManager.mergeExtractedMemories(chat, extracted);
+    // 使用提取的消息段中最后一条消息的时间作为这段记忆的发生时间
+    const defaultMemoryTime = dialogueTimeRange.end || Date.now();
+    const newIds = await window.vectorMemoryManager.mergeExtractedMemories(chat, extracted, defaultMemoryTime);
     if (updateTimestamp) {
       const vm = window.vectorMemoryManager.getVariableMemory(chat);
       // 基于最新架构：通过方法内部更新的 _tempLastMsgIndex 进行赋值，此处可以略过或者用以兜底

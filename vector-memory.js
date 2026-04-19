@@ -518,7 +518,7 @@ ${formattedHistory}
     }
   }
 
-  async mergeExtractedMemories(chat, extractedItems) {
+  async mergeExtractedMemories(chat, extractedItems, defaultTime = Date.now()) {
     const vm = this.getVariableMemory(chat);
     const newIds = [];
     
@@ -531,7 +531,7 @@ ${formattedHistory}
       const id = this.createFragment(chat, {
         ...item,
         embedding,
-        memoryTime: Date.now() // 新提取的记忆发生时间默认为当前
+        memoryTime: defaultTime // 新提取的记忆发生时间默认为传入时间
       });
       newIds.push(id);
     }

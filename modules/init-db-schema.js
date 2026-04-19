@@ -98,4 +98,9 @@ db.version(56).stores({
   chatSettingsPresets: '++id, name, createdAt'
 });
 
+// 副API预设系统
+db.version(57).stores({
+  secondaryApiPresets: '++id, name'
+});
+
 window.db = db;

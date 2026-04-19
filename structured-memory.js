@@ -572,11 +572,12 @@ class StructuredMemoryManager {
         row.className = 'sm-item-row';
         row.dataset.category = categoryCode;
         row.dataset.index = idx;
+        const rawAttr = item.raw ? ` data-raw="${this._escapeHtml(item.raw)}"` : '';
         row.innerHTML = `
           <div class="sm-item-checkbox sm-batch-element" data-category="${categoryCode}" data-index="${idx}" style="display:none"></div>
           <span class="sm-item-content">${this._escapeHtml(item.display)}</span>
           <div class="sm-item-actions">
-            <button class="sm-item-btn sm-edit-btn" data-category="${categoryCode}" data-index="${idx}" title="编辑">✏️</button>
+            <button class="sm-item-btn sm-edit-btn" data-category="${categoryCode}" data-index="${idx}"${rawAttr} title="编辑">✏️</button>
             <button class="sm-item-btn sm-delete-btn" data-category="${categoryCode}" data-index="${idx}" title="删除">🗑️</button>
           </div>
         `;
@@ -591,7 +592,7 @@ class StructuredMemoryManager {
   _escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.innerHTML.replace(/"/g, '"').replace(/'/g, '&#39;');
   }
 
   // ==================== 编辑操作 ====================

@@ -1892,6 +1892,19 @@ window.initEventBindingsA = async function(state, db) {
     });
 
 
+    const secondaryApiPresetSelect = document.getElementById('secondary-api-preset-select');
+    if (secondaryApiPresetSelect) {
+      secondaryApiPresetSelect.addEventListener('change', window.handleSecondaryApiPresetSelectionChange);
+    }
+    const saveSecondaryApiPresetBtn = document.getElementById('save-secondary-api-preset-btn');
+    if (saveSecondaryApiPresetBtn) {
+      saveSecondaryApiPresetBtn.addEventListener('click', window.saveSecondaryApiPreset);
+    }
+    const deleteSecondaryApiPresetBtn = document.getElementById('delete-secondary-api-preset-btn');
+    if (deleteSecondaryApiPresetBtn) {
+      deleteSecondaryApiPresetBtn.addEventListener('click', window.deleteSecondaryApiPreset);
+    }
+
     const messagesView = document.getElementById('messages-view');
     messagesView.addEventListener('scroll', () => {
 

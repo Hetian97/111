@@ -1838,6 +1838,20 @@
         <div class="settings-header" data-lang-key="apiSecondarySettings">副 API (长记忆总结)</div>
         <div class="settings-section">
             <div class="settings-item">
+                 <!-- 下拉框容器：flex-grow 占满左侧空间，内部左对齐 -->
+                 <div style="flex-grow: 1; display: flex; align-items: center; justify-content: flex-start; overflow: hidden;">
+                     <select id="secondary-api-preset-select" class="settings-select">
+                         <!-- JS 填充选项 -->
+                     </select>
+                 </div>
+                 
+                 <!-- 按钮组：固定在右侧 -->
+                 <div class="settings-right" style="flex-grow: 0; width: auto; margin-left: 10px;">
+                     <button id="save-secondary-api-preset-btn" class="settings-mini-btn">保存预设</button>
+                     <button id="delete-secondary-api-preset-btn" class="settings-mini-btn">删除预设</button>
+                 </div>
+            </div>
+            <div class="settings-item">
                 <label>反代地址</label>
                 <div class="settings-right">
                     <input type="text" id="secondary-proxy-url" placeholder="留空使用主API">
