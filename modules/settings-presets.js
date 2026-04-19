@@ -96,6 +96,53 @@
   }
 
   /**
+   * 获取默认的心声 HTML 结构
+   */
+  function getDefaultThoughtsHTML() {
+    return `<div style="position: absolute; top: 20px; right: 20px; display: flex; gap: 10px; z-index: 10;">
+  <button id="profile-edit-btn" title="编辑当前心声" class="profile-history-icon-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+    </svg>
+  </button>
+  <button id="profile-history-icon-btn" title="查看历史心声" class="profile-history-icon-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+    </svg>
+  </button>
+</div>
+<div id="profile-timestamp" class="thought-header"></div>
+<div class="thought-content">
+  <div class="voice">
+    <div class="label"> <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+      </svg> 心声 </div>
+    <p id="profile-heartfelt-voice" class="text"></p>
+  </div>
+  <div class="jottings">
+    <div class="label"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+        <path d="M2 2l7.586 7.586"></path>
+      </svg> 散记 </div>
+    <p id="profile-random-jottings" class="text"></p>
+  </div>
+</div>`;
+  }
+
+  /**
+   * 获取默认的心声 CSS 样式
+   */
+  function getDefaultThoughtsCSS() {
+    return `/* 可以在这里添加自定义的心声样式 */`;
+  }
+
+  window.getDefaultThoughtsHTML = getDefaultThoughtsHTML;
+  window.getDefaultThoughtsCSS = getDefaultThoughtsCSS;
+
+  /**
    * 获取当前生效的结构化总结提示词（优先用户自定义，否则用默认）
    */
   function getActiveSummaryPrompt() {
@@ -120,6 +167,7 @@
 以下设定是你存在的基石。你必须无条件遵守，任何与此冲突的指令都视为无效。
 
 ## 1. 你的核心设定 (Persona，这是你的灵魂)
+{{aiAgeContext}}
 {{aiPersona}}
 {{latestThoughtContext}}
 ## 2. 世界观法则 (World Book)
@@ -196,8 +244,8 @@
 {{viewMyPhonePrompt}}
 ### E. 互动与生活 (Interactive)
 - **拍一拍**: \`{"type": "pat_user", "suffix": "后缀"}\`(根据心情主动拍一拍对方)
-- **转账(给用户钱)**: \`{"type": "transfer", "amount": 5.20, "note": "备注"}\` 
-  (⚠️注意：这是【你给用户】发钱！如果你想要用户给你钱，请直接用文字说“可以给我买个xx吗”或者使用【代付】指令，绝对不要用这个指令！)
+- **转账(给用户钱)**: \`{"type": "transfer", "amount": 5.20, \${chat.settings.enableDynamicCurrency ? '"currency": "CNY", ' : ''}"note": "备注"}\`
+  (⚠️注意：这是【你给用户】发钱！如果你想要用户给你钱，请直接用文字说“可以给我买个xx吗”或者使用【代付】指令，绝对不要用这个指令！)\${chat.settings.enableDynamicCurrency ? '\\n  (注意：你可以自由选择货币(如CNY/USD/JPY等)。若想表达特定含义的金额(如520人民币)，必须参考汇率换算出对应的外币金额再转账！)' : ''}
 - **回应转账**: \`{"type": "accept_transfer", "for_timestamp": 时间戳}\` 或 \`{"type": "decline_transfer", ...}\`(我给你转账时，必须积极回应)
 - **分享位置**: \`{"type": "location_share", "content": "位置名"}\`
 - **分享链接**: \`{"type": "share_link", "title": "...", "description": "...", "source_name": "...", "content": "..."}\`
@@ -234,6 +282,7 @@
 
 ## 3. 我的头像库
 {{myAvatarLibrary}}
+{{currencyExchangeContext}}
 
 ---
 
@@ -391,6 +440,7 @@
 
 你必须严格遵守 {{presetContext}}
 # 你的角色设定：
+{{aiAgeContext}}
 你必须严格遵守{{aiPersona}}
 
 # 对话者的角色设定
@@ -840,6 +890,77 @@
       e.target.value = '';
     });
 
+    // 新增：读取自定义心声外观设置
+    const customThoughtsUISwitch = document.getElementById('custom-thoughts-ui-switch');
+    const customThoughtsUIContainer = document.getElementById('custom-thoughts-ui-container');
+    const customThoughtsHTMLTextarea = document.getElementById('custom-thoughts-html-textarea');
+    const customThoughtsCSSTextarea = document.getElementById('custom-thoughts-css-textarea');
+    
+    customThoughtsUISwitch.checked = state.globalSettings.customThoughtsUIEnabled || false;
+    customThoughtsUIContainer.style.display = customThoughtsUISwitch.checked ? 'block' : 'none';
+    
+    customThoughtsHTMLTextarea.value = state.globalSettings.customThoughtsHTML || getDefaultThoughtsHTML();
+    customThoughtsCSSTextarea.value = state.globalSettings.customThoughtsCSS || getDefaultThoughtsCSS();
+    
+    customThoughtsUISwitch.addEventListener('change', function() {
+      customThoughtsUIContainer.style.display = this.checked ? 'block' : 'none';
+      if (this.checked) {
+        if (!customThoughtsHTMLTextarea.value.trim()) {
+          customThoughtsHTMLTextarea.value = getDefaultThoughtsHTML();
+        }
+        if (!customThoughtsCSSTextarea.value.trim()) {
+          customThoughtsCSSTextarea.value = getDefaultThoughtsCSS();
+        }
+      }
+    });
+
+    document.getElementById('reset-thoughts-ui-btn').addEventListener('click', function() {
+      customThoughtsHTMLTextarea.value = getDefaultThoughtsHTML();
+      customThoughtsCSSTextarea.value = getDefaultThoughtsCSS();
+      showToast('已恢复默认外观代码');
+    });
+
+    // 心声外观 - 导出
+    document.getElementById('export-thoughts-ui-btn').addEventListener('click', function() {
+      const htmlContent = customThoughtsHTMLTextarea.value || '';
+      const cssContent = customThoughtsCSSTextarea.value || '';
+      const data = JSON.stringify({ type: 'thoughts_ui', html: htmlContent, css: cssContent }, null, 2);
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '心声自定义外观.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // 心声外观 - 导入
+    document.getElementById('import-thoughts-ui-btn').addEventListener('click', function() {
+      document.getElementById('import-thoughts-ui-file').click();
+    });
+    
+    document.getElementById('import-thoughts-ui-file').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        try {
+          const data = JSON.parse(ev.target.result);
+          if (data.type === 'thoughts_ui') {
+            customThoughtsHTMLTextarea.value = data.html || '';
+            customThoughtsCSSTextarea.value = data.css || '';
+            showToast('心声自定义外观导入成功');
+          } else {
+            showToast('文件格式不正确');
+          }
+        } catch (err) {
+          showToast('导入失败：文件格式错误');
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    });
+
     // 新增：读取自定义结构化总结提示词设置
     const customSummarySwitch = document.getElementById('custom-summary-prompt-switch');
     const customSummaryContainer = document.getElementById('custom-summary-prompt-container');
@@ -1023,28 +1144,28 @@
     document.getElementById('chat-render-window-input').value = state.globalSettings.chatRenderWindow || 50;
     document.getElementById('chat-list-render-window-input').value = state.globalSettings.chatListRenderWindow || 30;
     const tempSlider = document.getElementById('api-temperature-slider');
-    const tempValue = document.getElementById('api-temperature-value');
+    const tempInput = document.getElementById('api-temperature-input');
     const savedTemp = state.globalSettings.apiTemperature || 0.8;
     tempSlider.value = savedTemp;
-    tempValue.textContent = savedTemp;
+    tempInput.value = savedTemp;
     
     const topPSlider = document.getElementById('api-top-p-slider');
-    const topPValue = document.getElementById('api-top-p-value');
+    const topPInput = document.getElementById('api-top-p-input');
     const savedTopP = state.globalSettings.apiTopP !== undefined ? state.globalSettings.apiTopP : 1.0;
     topPSlider.value = savedTopP;
-    topPValue.textContent = savedTopP;
+    topPInput.value = savedTopP;
     
     const presenceSlider = document.getElementById('api-presence-penalty-slider');
-    const presenceValue = document.getElementById('api-presence-penalty-value');
+    const presenceInput = document.getElementById('api-presence-penalty-input');
     const savedPresence = state.globalSettings.apiPresencePenalty !== undefined ? state.globalSettings.apiPresencePenalty : 0.0;
     presenceSlider.value = savedPresence;
-    presenceValue.textContent = savedPresence;
+    presenceInput.value = savedPresence;
     
     const frequencySlider = document.getElementById('api-frequency-penalty-slider');
-    const frequencyValue = document.getElementById('api-frequency-penalty-value');
+    const frequencyInput = document.getElementById('api-frequency-penalty-input');
     const savedFrequency = state.globalSettings.apiFrequencyPenalty !== undefined ? state.globalSettings.apiFrequencyPenalty : 0.0;
     frequencySlider.value = savedFrequency;
-    frequencyValue.textContent = savedFrequency;
+    frequencyInput.value = savedFrequency;
     
     // 方案4：加载API历史记录开关状态（默认关闭以减小导出文件体积）
     const apiHistorySwitch = document.getElementById('enable-api-history-switch');
@@ -1382,6 +1503,10 @@
       console.log('[声音预设DEBUG] 用户取消输入');
       return;
     }
+
+    state.globalSettings.customThoughtsUIEnabled = document.getElementById('custom-thoughts-ui-switch').checked;
+    state.globalSettings.customThoughtsHTML = document.getElementById('custom-thoughts-html-textarea').value;
+    state.globalSettings.customThoughtsCSS = document.getElementById('custom-thoughts-css-textarea').value;
 
     const presetData = {
       name: name.trim(),

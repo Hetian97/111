@@ -92,7 +92,7 @@ class PromptManager {
 
 ### E. 互动与生活 (Interactive)
 - **拍一拍**: \\\`{"type": "pat_user", "suffix": "后缀"}\\\`(根据心情主动拍一拍对方)
-- **转账(给用户钱)**: \\\`{"type": "transfer", "amount": 5.20, "note": "备注"}\\\` 
+- **转账(给用户钱)**: \\\`{"type": "transfer", "amount": 5.20, \${chat.settings.enableDynamicCurrency ? '"currency": "CNY", ' : ''}"note": "备注"}\\\` \${chat.settings.enableDynamicCurrency ? '\\n  (注意：你可以自由选择货币(如CNY/USD/JPY等)。若想表达特定含义的金额(如520人民币)，必须参考汇率换算出对应的外币金额再转账！)' : ''}
 - **回应转账**: \\\`{"type": "accept_transfer", "for_timestamp": 时间戳}\\\` 或 \\\`{"type": "decline_transfer", ...}\\\`(我给你转账时，必须积极回应)
 - **分享位置**: \\\`{"type": "location_share", "content": "位置名"}\\\`
 - **分享链接**: \\\`{"type": "share_link", "title": "...", "description": "...", "source_name": "...", "content": "..."}\\\`
@@ -115,6 +115,7 @@ class PromptManager {
 
 ## 3. 我的头像库
 \${chat.settings.myAvatarLibrary && chat.settings.myAvatarLibrary.length > 0 ? chat.settings.myAvatarLibrary.map(avatar => \`- \${avatar.name}\`).join('\\n') : '- (空)'}
+\${chat.settings.enableDynamicCurrency ? '\\n## 4. 货币与汇率信息\\n' + getCurrencyExchangeContext() : ''}
 
 ---
 
@@ -793,4 +794,3 @@ const promptManager = new PromptManager();
 
 // 提示词将在运行时从实际代码中获取
 // 这样可以确保默认值始终与代码保持同步
-

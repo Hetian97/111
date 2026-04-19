@@ -1896,17 +1896,44 @@ window.initFeatures = function(state, db) {
 
 
     document.getElementById('reading-content').addEventListener('scroll', debouncedUpdateReadingContext);
-    document.getElementById('api-temperature-slider').addEventListener('input', (e) => {
-      document.getElementById('api-temperature-value').textContent = e.target.value;
+    const tempSlider = document.getElementById('api-temperature-slider');
+    const tempInput = document.getElementById('api-temperature-input');
+    const topPSlider = document.getElementById('api-top-p-slider');
+    const topPInput = document.getElementById('api-top-p-input');
+    const presenceSlider = document.getElementById('api-presence-penalty-slider');
+    const presenceInput = document.getElementById('api-presence-penalty-input');
+    const frequencySlider = document.getElementById('api-frequency-penalty-slider');
+    const frequencyInput = document.getElementById('api-frequency-penalty-input');
+
+    // 联动逻辑
+    tempSlider.addEventListener('input', (e) => tempInput.value = e.target.value);
+    tempInput.addEventListener('input', (e) => tempSlider.value = e.target.value);
+    
+    topPSlider.addEventListener('input', (e) => topPInput.value = e.target.value);
+    topPInput.addEventListener('input', (e) => topPSlider.value = e.target.value);
+
+    presenceSlider.addEventListener('input', (e) => presenceInput.value = e.target.value);
+    presenceInput.addEventListener('input', (e) => presenceSlider.value = e.target.value);
+
+    frequencySlider.addEventListener('input', (e) => frequencyInput.value = e.target.value);
+    frequencyInput.addEventListener('input', (e) => frequencySlider.value = e.target.value);
+
+    // 重置按钮逻辑
+    document.getElementById('reset-api-temperature-btn').addEventListener('click', () => {
+      tempSlider.value = 0.8;
+      tempInput.value = 0.8;
     });
-    document.getElementById('api-top-p-slider').addEventListener('input', (e) => {
-      document.getElementById('api-top-p-value').textContent = e.target.value;
+    document.getElementById('reset-api-top-p-btn').addEventListener('click', () => {
+      topPSlider.value = 1.0;
+      topPInput.value = 1.0;
     });
-    document.getElementById('api-presence-penalty-slider').addEventListener('input', (e) => {
-      document.getElementById('api-presence-penalty-value').textContent = e.target.value;
+    document.getElementById('reset-api-presence-penalty-btn').addEventListener('click', () => {
+      presenceSlider.value = 0.0;
+      presenceInput.value = 0.0;
     });
-    document.getElementById('api-frequency-penalty-slider').addEventListener('input', (e) => {
-      document.getElementById('api-frequency-penalty-value').textContent = e.target.value;
+    document.getElementById('reset-api-frequency-penalty-btn').addEventListener('click', () => {
+      frequencySlider.value = 0.0;
+      frequencyInput.value = 0.0;
     });
     const chatListContainer = document.getElementById('messages-view');
     chatListContainer.addEventListener('scroll', () => {

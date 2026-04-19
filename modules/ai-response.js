@@ -5,6 +5,40 @@
 // 从 script.js 第 1346~1421 + 2553~2852 + 8979~9060 + 13711~19173 + 14027~19165 行拆分
 // ============================================================
 
+  // === 新增：动态年龄和生日计算上下文生成函数 ===
+  function getDynamicAgeContext(chat) {
+    if (!chat || !chat.settings || !chat.settings.enableDynamicAge || !chat.settings.aiBirthday) return '';
+    
+    const bd = chat.settings.aiBirthday;
+    if (!bd.year) return ''; // 必须至少要有年份
+
+    // 判断是否开启了自定义时间
+    const customTimeInfo = typeof window.getCustomTime === 'function' ? window.getCustomTime() : null;
+    const now = (customTimeInfo && customTimeInfo.enabled) ? customTimeInfo.date : new Date();
+
+    let age = now.getFullYear() - bd.year;
+    
+    // 构建生日字符串
+    let birthdayStr = `${bd.year}年`;
+    if (bd.month) {
+      birthdayStr += `${bd.month}月`;
+      if (bd.day) {
+        birthdayStr += `${bd.day}日`;
+      }
+    }
+
+    // 精确计算年龄
+    if (bd.month && bd.day) {
+      const m = now.getMonth() + 1;
+      const d = now.getDate();
+      if (m < bd.month || (m === bd.month && d < bd.day)) {
+        age--;
+      }
+    }
+
+    return `- **你的生日**: ${birthdayStr}\n- **你的当前年龄**: ${age}岁\n`;
+  }
+
   // WMO天气代码转中文描述
   function getWeatherDescription(code) {
     const codes = {
@@ -364,6 +398,83 @@
   }
 
 
+  // ========== 提示词变量替换与旧版兼容 ==========
+  function replaceTemplateVars(template, contextMap) {
+    if (!template) return '';
+    let p = template;
+    
+    // 1. 粗犷替换旧版的复杂 ${...} 表达式，映射为新版 {{...}}
+    p = p.replace(/\$\{chat\.originalName\}/g, '{{chat.originalName}}');
+    p = p.replace(/\$\{chat\.name\}/g, '{{chat.name}}');
+    p = p.replace(/\$\{chat\.settings\.aiPersona\}/g, '{{aiPersona}}');
+    p = p.replace(/\$\{latestThoughtContext\}/g, '{{latestThoughtContext}}');
+    p = p.replace(/\$\{worldBookContent[^\}]*\}/g, '{{worldBookContent}}');
+    p = p.replace(/\$\{getMemoryContextForPrompt\(chat\)\}/g, '{{memoryContextForPrompt}}');
+    p = p.replace(/\$\{multiLayeredSummaryContext\}/g, '{{multiLayeredSummaryContext}}');
+    p = p.replace(/\$\{todoListContext\}/g, '{{todoListContext}}');
+    p = p.replace(/\$\{periodSummaryContext\}/g, '{{periodSummaryContext}}');
+    p = p.replace(/\$\{myNickname\}/g, '{{myNickname}}');
+    p = p.replace(/\$\{chat\.settings\.myPersona[^\}]*\}/g, '{{myPersona}}');
+    
+    // 特别处理连着两个 ${} 的 status，如 ${chat.settings.userStatus ? ...} ${chat...}
+    p = p.replace(/\$\{chat\.settings\.userStatus[^\n]*?\}\s*(?:\$\{chat\.settings\.userStatus[^\}]*\})?/g, '{{userStatus}}');
+    
+    p = p.replace(/\$\{userProfileContext\}/g, '{{userProfileContext}}');
+    p = p.replace(/\$\{nameHistoryContext\}/g, '{{nameHistoryContext}}');
+    
+    p = p.replace(/\$\{chat\.settings\.enableTimePerception[^\n]*\}/g, '{{timePerceptionContext}}');
+    p = p.replace(/\$\{weatherContext\}/g, '{{weatherContext}}');
+    p = p.replace(/\$\{timeContext\}/g, '{{timeContext}}');
+    p = p.replace(/\$\{musicContext\s*\?[^\n]*\}/g, '{{musicContextStr}}');
+    p = p.replace(/\$\{readingContext\s*\?[^\n]*\}/g, '{{readingContextStr}}');
+    p = p.replace(/\$\{contactsList\}/g, '{{contactsList}}');
+    p = p.replace(/\$\{postsContext\}/g, '{{postsContext}}');
+    p = p.replace(/\$\{groupContext\}/g, '{{groupContext}}');
+    p = p.replace(/\$\{gomokuContext\}/g, '{{gomokuContext}}');
+    p = p.replace(/\$\{sharedContext\}/g, '{{sharedContext}}');
+    p = p.replace(/\$\{callTranscriptContext\}/g, '{{callTranscriptContext}}');
+    p = p.replace(/\$\{synthMusicInstruction\}/g, '{{synthMusicInstruction}}');
+    p = p.replace(/\$\{narratorInstruction\}/g, '{{narratorInstruction}}');
+    p = p.replace(/\$\{kinshipContext\}/g, '{{kinshipContext}}');
+    p = p.replace(/\$\{coupleSpaceContext\}/g, '{{coupleSpaceContext}}');
+    p = p.replace(/\$\{thoughtsPrompt\}/g, '{{thoughtsPrompt}}');
+    p = p.replace(/\$\{stickerContext\}/g, '{{stickerContext}}');
+    p = p.replace(/\$\{chat\.settings\.aiAvatarLibrary\}/g, '{{aiAvatarLibrary}}');
+    p = p.replace(/\$\{chat\.settings\.myAvatarLibrary\}/g, '{{myAvatarLibrary}}');
+
+    // 尝试把遗漏的简单 ${xxx} 转成 {{xxx}}
+    p = p.replace(/\$\{([^}]+)\}/g, '{{$1}}');
+
+    // 2. 将 {{xxx}} 变量映射到 contextMap 真实数据
+    return p.replace(/\{\{([^{}]+)\}\}/g, (match, key) => {
+      const k = key.trim();
+      if (contextMap[k] !== undefined) return contextMap[k];
+      
+      // 模糊匹配兜底（防用户写错变量名）
+      if (k === 'chat.originalName') return contextMap['chat.originalName'] !== undefined ? contextMap['chat.originalName'] : match;
+      if (k === 'chat.name') return contextMap['chat.name'] !== undefined ? contextMap['chat.name'] : match;
+      if (k.includes('aiPersona')) return contextMap['aiPersona'] !== undefined ? contextMap['aiPersona'] : match;
+      if (k.includes('worldBookContent')) return contextMap['worldBookContent'] !== undefined ? contextMap['worldBookContent'] : match;
+      if (k.includes('getMemoryContextForPrompt')) return contextMap['memoryContextForPrompt'] !== undefined ? contextMap['memoryContextForPrompt'] : match;
+      if (k.includes('myPersona')) return contextMap['myPersona'] !== undefined ? contextMap['myPersona'] : match;
+      if (k.includes('userStatus')) return contextMap['userStatus'] !== undefined ? contextMap['userStatus'] : match;
+      if (k.includes('timePerception') || k.includes('currentTime')) return contextMap['timePerceptionContext'] !== undefined ? contextMap['timePerceptionContext'] : match;
+      if (k.includes('musicContext')) return contextMap['musicContextStr'] !== undefined ? contextMap['musicContextStr'] : match;
+      if (k.includes('readingContext')) return contextMap['readingContextStr'] !== undefined ? contextMap['readingContextStr'] : match;
+      if (k.includes('aiAvatarLibrary')) return contextMap['aiAvatarLibrary'] !== undefined ? contextMap['aiAvatarLibrary'] : match;
+      if (k.includes('myAvatarLibrary')) return contextMap['myAvatarLibrary'] !== undefined ? contextMap['myAvatarLibrary'] : match;
+      if (k === 'char_avatar') return contextMap['char_avatar'] !== undefined ? contextMap['char_avatar'] : match;
+      if (k === 'user_avatar') return contextMap['user_avatar'] !== undefined ? contextMap['user_avatar'] : match;
+      if (k === 'char_name') return contextMap['char_name'] !== undefined ? contextMap['char_name'] : match;
+      if (k === 'char_remark') return contextMap['char_remark'] !== undefined ? contextMap['char_remark'] : match;
+      if (k === 'user_name') return contextMap['user_name'] !== undefined ? contextMap['user_name'] : match;
+      if (k === 'user_nickname') return contextMap['user_nickname'] !== undefined ? contextMap['user_nickname'] : match;
+      if (k.includes('myNickname')) return contextMap['myNickname'] !== undefined ? contextMap['myNickname'] : match;
+      
+      return match;
+    });
+  }
+
   function parseAiResponse(content) {
     if (!content) return [{
       type: 'text',
@@ -572,9 +683,20 @@ ${linkedContents}
 
       const membersList = chat.members.map(m => `- **${m.groupNickname}** (本名: ${m.originalName}): ${m.persona}`).join('\n');
       const stickerContext = getGroupStickerContextForPrompt(chat);
+      let aiAgeContext = getDynamicAgeContext(chat);
+      let currencyExchangeContext = chat.settings.enableDynamicCurrency ? getCurrencyExchangeContext() : '';
+
       let systemPromptTemplate = window.getActiveChatPrompt ? window.getActiveChatPrompt('spectator') : '';
       
       const contextMap = {
+        'aiAgeContext': aiAgeContext,
+        'currencyExchangeContext': currencyExchangeContext,
+        'char_avatar': chat.isGroup ? (chat.settings.groupAvatar || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg') : (chat.settings.aiAvatar || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg'),
+        'user_avatar': chat.settings.myAvatar || (state.qzoneSettings && state.qzoneSettings.avatar) || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg',
+        'char_name': chat.originalName,
+        'char_remark': chat.name,
+        'user_name': (state.qzoneSettings && state.qzoneSettings.nickname) || '用户',
+        'user_nickname': chat.settings.myNickname || '我',
         'chat.name': chat.name,
         'longTermMemoryContext': longTermMemoryContext,
         'worldBookContent': worldBookContent,
@@ -584,9 +706,7 @@ ${linkedContents}
         'stickerContext': stickerContext
       };
       
-      systemPrompt = systemPromptTemplate.replace(/\{\{([^{}]+)\}\}/g, (match, key) => {
-        return contextMap[key] !== undefined ? contextMap[key] : match;
-      });
+      systemPrompt = replaceTemplateVars(systemPromptTemplate, contextMap);
 
       systemPrompt = processPromptWithSettings(systemPrompt, 'spectator');
 
@@ -1638,8 +1758,11 @@ ${linkedContents}
           return `- **${member.groupNickname}** (本名: ${member.originalName}): ${member.persona} [社交背景: ${contactsText}]`;
         }).join('\n');
 
-        const myNickname = chat.settings.myNickname || '我';
-        const myOriginalName = state.qzoneSettings.nickname || '{{user}}';
+          const myNickname = chat.settings.myNickname || '我';
+          const myOriginalName = state.qzoneSettings.nickname || '{{user}}';
+
+          let aiAgeContext = getDynamicAgeContext(chat);
+          let currencyExchangeContext = chat.settings.enableDynamicCurrency ? getCurrencyExchangeContext() : '';
 
         let announcementContext = '';
         const pinnedAnnouncements = (chat.announcements || []).filter(a => a.isPinned);
@@ -1786,8 +1909,16 @@ ${linkedContents}
         
         let bilingualAlertVoice = chat.settings.enableBilingualMode ? ' ⚠️ 必须使用双语格式：外语〖中文〗' : '';
 
-        const contextMap = {
-          'memberNames': memberNames.join('、 '),
+          const contextMap = {
+            'aiAgeContext': aiAgeContext,
+            'currencyExchangeContext': currencyExchangeContext,
+            'char_avatar': chat.settings.groupAvatar || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg',
+            'user_avatar': chat.settings.myAvatar || (state.qzoneSettings && state.qzoneSettings.avatar) || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg',
+            'char_name': chat.originalName,
+            'char_remark': chat.name,
+            'user_name': myOriginalName,
+            'user_nickname': myNickname,
+            'memberNames': memberNames.join('、 '),
           'bilingualModeGroupContext': bilingualModeGroupContext,
           'myNickname': myNickname,
           'myOriginalName': myOriginalName,
@@ -1818,9 +1949,7 @@ ${linkedContents}
           'bilingualAlertVoice': bilingualAlertVoice
         };
 
-        systemPrompt = systemPromptTemplate.replace(/\{\{([^{}]+)\}\}/g, (match, key) => {
-          return contextMap[key] !== undefined ? contextMap[key] : match;
-        });
+        systemPrompt = replaceTemplateVars(systemPromptTemplate, contextMap);
 
         systemPrompt = processPromptWithSettings(systemPrompt, 'group');
 
@@ -1858,6 +1987,10 @@ ${linkedContents}
           else if (msg.type === 'voice_message') content = `[${sender} 发送了一条语音，内容是：'${msg.content}']`;
           else if (msg.type === 'transfer') {
             // --- 修复开始：明确转账状态和方向 ---
+            let currencySuffix = '';
+            if (msg.currency && msg.currency !== 'CNY') {
+                currencySuffix = `(币种: \${msg.currency})`;
+            }
             let statusText = '';
             if (msg.status === 'accepted') statusText = ' (✅已收款)';
             else if (msg.status === 'declined') statusText = ' (❌已拒收)';
@@ -1865,9 +1998,9 @@ ${linkedContents}
 
             if (msg.isRefund) {
               // 如果是退款，明确告诉AI这是“退回”的钱，不是新给的
-              content = `[系统提示：${msg.senderName} 将之前的转账退还给了 ${msg.receiverName} (金额: ${msg.amount}元)，此交易已结束。]`;
+              content = `[系统提示：\${msg.senderName} 将之前的转账退还给了 \${msg.receiverName} (金额: \${msg.amount}\${currencySuffix})，此交易已结束。]`;
             } else {
-              content = `[${msg.senderName} 向 ${msg.receiverName} 转账 ${msg.amount}元, 备注: ${msg.note}${statusText}]`;
+              content = `[\${msg.senderName} 向 \${msg.receiverName} 转账 \${msg.amount}\${currencySuffix}, 备注: \${msg.note}\${statusText}]`;
             }
             // --- 修复结束 ---
           }
@@ -2127,12 +2260,19 @@ ${enabledEntries}
 
           let systemPromptTemplate = window.getActiveChatPrompt ? window.getActiveChatPrompt('offline') : '';
           
-          let longTermMemoryContextOffline = (() => {
-            const memMode = chat.settings.memoryMode || (chat.settings.enableStructuredMemory ? 'structured' : 'diary');
-            if (memMode === 'structured' && window.structuredMemoryManager) return window.structuredMemoryManager.serializeForPrompt(chat);
-            if (memMode === 'vector') return '(向量记忆模式 - 由检索引擎动态注入)';
-            return chat.longTermMemory && chat.longTermMemory.length > 0 ? chat.longTermMemory.map(mem => `- ${mem.content}`).join('\n') : '- (暂无)';
-          })();
+          let longTermMemoryContextOffline = '';
+          const memModeOffline = chat.settings.memoryMode || (chat.settings.enableStructuredMemory ? 'structured' : 'diary');
+          if (memModeOffline === 'vector' && window.vectorMemoryManager) {
+            const queryTextForVectorOffline = filteredHistory.slice(-5).map(m => typeof m.content === 'string' ? m.content : '').join(' ');
+            longTermMemoryContextOffline = await window.vectorMemoryManager.serializeForPrompt(chat, queryTextForVectorOffline);
+          } else if (memModeOffline === 'structured' && window.structuredMemoryManager) {
+            longTermMemoryContextOffline = window.structuredMemoryManager.serializeForPrompt(chat);
+          } else {
+            longTermMemoryContextOffline = chat.longTermMemory && chat.longTermMemory.length > 0 ? chat.longTermMemory.map(mem => `- ${mem.content}`).join('\n') : '- (暂无)';
+          }
+          
+          let aiAgeContext = getDynamicAgeContext(chat);
+          let currencyExchangeContext = chat.settings.enableDynamicCurrency ? getCurrencyExchangeContext() : '';
           
           let historySliceStrOffline = historySlice.map(msg => {
             let line = `${msg.role === 'user' ? myNickname : chat.name}: `;
@@ -2145,6 +2285,14 @@ ${enabledEntries}
           }).join('\n');
           
           const contextMapOffline = {
+            'aiAgeContext': aiAgeContext,
+            'currencyExchangeContext': currencyExchangeContext,
+            'char_avatar': chat.settings.aiAvatar || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg',
+            'user_avatar': chat.settings.myAvatar || (state.qzoneSettings && state.qzoneSettings.avatar) || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg',
+            'char_name': chat.originalName,
+            'char_remark': chat.name,
+            'user_name': (state.qzoneSettings && state.qzoneSettings.nickname) || '用户',
+            'user_nickname': myNickname,
             'chat.originalName': chat.originalName,
             'presetContext': presetContext,
             'aiPersona': chat.settings.aiPersona,
@@ -2159,9 +2307,7 @@ ${enabledEntries}
             'maxLength': maxLength
           };
 
-          systemPrompt = systemPromptTemplate.replace(/\{\{([^{}]+)\}\}/g, (match, key) => {
-            return contextMapOffline[key] !== undefined ? contextMapOffline[key] : match;
-          });
+          systemPrompt = replaceTemplateVars(systemPromptTemplate, contextMapOffline);
 
           systemPrompt = processPromptWithSettings(systemPrompt, 'offline');
           
@@ -2233,10 +2379,14 @@ ${enabledEntries}
                 role: 'user',
                 content: `${prefix}[你发送了一条语音消息，内容是：'${msg.content}']`
               };
-              if (msg.type === 'transfer') return {
-                role: 'user',
-                content: `${prefix}[系统提示：你于时间戳 ${msg.timestamp} 向对方发起了转账: ${msg.amount}元, 备注: ${msg.note}。等待对方处理。]`
-              };
+              if (msg.type === 'transfer') {
+                let cur = '';
+                if (msg.currency && msg.currency !== 'CNY') cur = ` (币种: \${msg.currency})`;
+                return {
+                  role: 'user',
+                  content: `\${prefix}[系统提示：你于时间戳 \${msg.timestamp} 向对方发起了转账: \${msg.amount}\${cur}, 备注: \${msg.note}。等待对方处理。]`
+                };
+              }
               if (msg.type === 'couple_invite' || msg.type === 'couple_invite_response') return null;
               if (msg.type === 'waimai_request') return {
                 role: 'user',
@@ -2267,6 +2417,7 @@ ${enabledEntries}
                 assistantMsgObject.meaning = msg.meaning;
               } else if (msg.type === 'transfer') {
                 assistantMsgObject.amount = msg.amount;
+                if (msg.currency) assistantMsgObject.currency = msg.currency;
                 assistantMsgObject.note = msg.note;
               } else if (msg.type === 'waimai_request') {
                 assistantMsgObject.productInfo = msg.productInfo;
@@ -2929,12 +3080,32 @@ ${getActiveThoughtsPrompt()}
           let aiAvatarLibrary = chat.settings.aiAvatarLibrary && chat.settings.aiAvatarLibrary.length > 0 ? chat.settings.aiAvatarLibrary.map(avatar => `- ${avatar.name}`).join('\n') : '- (空)';
           let myAvatarLibrary = chat.settings.myAvatarLibrary && chat.settings.myAvatarLibrary.length > 0 ? chat.settings.myAvatarLibrary.map(avatar => `- ${avatar.name}`).join('\n') : '- (空)';
           
+          let aiAgeContext = getDynamicAgeContext(chat);
+          let currencyExchangeContext = chat.settings.enableDynamicCurrency ? getCurrencyExchangeContext() : '';
+
+          let resolvedMemoryContextForPrompt = '';
+          const memModeSingle = chat.settings.memoryMode || (chat.settings.enableStructuredMemory ? 'structured' : 'diary');
+          if (memModeSingle === 'vector' && window.vectorMemoryManager) {
+            const queryTextForVectorSingle = filteredHistory.slice(-5).map(m => typeof m.content === 'string' ? m.content : '').join(' ');
+            resolvedMemoryContextForPrompt = await window.vectorMemoryManager.serializeForPrompt(chat, queryTextForVectorSingle);
+          } else {
+            resolvedMemoryContextForPrompt = getMemoryContextForPrompt(chat);
+          }
+
           const contextMapSingle = {
+            'aiAgeContext': aiAgeContext,
+            'currencyExchangeContext': currencyExchangeContext,
+            'char_avatar': chat.settings.aiAvatar || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg',
+            'user_avatar': chat.settings.myAvatar || (state.qzoneSettings && state.qzoneSettings.avatar) || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg',
+            'char_name': chat.originalName,
+            'char_remark': chat.name,
+            'user_name': (state.qzoneSettings && state.qzoneSettings.nickname) || '用户',
+            'user_nickname': myNickname,
             'chat.originalName': chat.originalName,
             'aiPersona': chat.settings.aiPersona,
             'latestThoughtContext': latestThoughtContext,
             'worldBookContent': worldBookContent || '(当前无特殊世界观设定，以现实逻辑为准)',
-            'memoryContextForPrompt': getMemoryContextForPrompt(chat),
+            'memoryContextForPrompt': resolvedMemoryContextForPrompt,
             'multiLayeredSummaryContext': multiLayeredSummaryContext,
             'todoListContext': todoListContext,
             'periodSummaryContext': periodSummaryContext,
@@ -2974,9 +3145,7 @@ ${getActiveThoughtsPrompt()}
             'myAvatarLibrary': myAvatarLibrary
           };
 
-          systemPrompt = systemPromptTemplate.replace(/\{\{([^{}]+)\}\}/g, (match, key) => {
-            return contextMapSingle[key] !== undefined ? contextMapSingle[key] : match;
-          });
+          systemPrompt = replaceTemplateVars(systemPromptTemplate, contextMapSingle);
 
           systemPrompt = processPromptWithSettings(systemPrompt, 'single');
 
@@ -5250,6 +5419,7 @@ ${getActiveThoughtsPrompt()}
                 type: 'transfer',
                 isReceived: true,  // 标记为收款
                 amount: originalMsg.amount,
+                currency: originalMsg.currency || 'CNY',
                 note: '已收款',
                 timestamp: messageTimestamp++
               };
@@ -5278,6 +5448,7 @@ ${getActiveThoughtsPrompt()}
                 type: 'transfer',
                 isRefund: true, // 确保标记为退款
                 amount: originalMsg.amount,
+                currency: originalMsg.currency || 'CNY',
                 note: '转账已被拒收',
                 receiverName: '我', // 明确接收人
                 timestamp: messageTimestamp++
@@ -5562,6 +5733,7 @@ ${getActiveThoughtsPrompt()}
               ...baseMessage,
               type: 'transfer',
               amount: msgData.amount,
+              currency: msgData.currency || 'CNY',
               note: msgData.note,
               receiverName: msgData.receiver || '我'
             };
@@ -6293,9 +6465,20 @@ ${linkedContents}
         memoryContextForPrompt = '# 长期记忆 (必须严格遵守)\n' + (chat.longTermMemory && chat.longTermMemory.length > 0 ? chat.longTermMemory.map(mem => `- ${mem.content}`).join('\n') : '- (暂无)');
       }
 
+      let aiAgeContext = getDynamicAgeContext(chat);
+      let currencyExchangeContext = chat.settings.enableDynamicCurrency ? getCurrencyExchangeContext() : '';
+
       let systemPromptTemplate = window.getActiveChatPrompt ? window.getActiveChatPrompt('single') : '';
       
       const contextMapPropel = {
+        'aiAgeContext': aiAgeContext,
+        'currencyExchangeContext': currencyExchangeContext,
+        'char_avatar': chat.isGroup ? (chat.settings.groupAvatar || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg') : (chat.settings.aiAvatar || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg'),
+        'user_avatar': chat.settings.myAvatar || (state.qzoneSettings && state.qzoneSettings.avatar) || 'https://i.postimg.cc/y8xWzCqj/anime-boy.jpg',
+        'char_name': chat.originalName,
+        'char_remark': chat.name,
+        'user_name': (state.qzoneSettings && state.qzoneSettings.nickname) || '用户',
+        'user_nickname': myNickname,
         'chat.originalName': chat.originalName,
         'aiPersona': chat.settings.aiPersona,
         'latestThoughtContext': '', // 推进时通常没有上一轮思考，故留空
@@ -6340,9 +6523,7 @@ ${linkedContents}
         'myAvatarLibrary': chat.settings.myAvatarLibrary && chat.settings.myAvatarLibrary.length > 0 ? chat.settings.myAvatarLibrary.map(avatar => `- ${avatar.name}`).join('\n') : '- (空)'
       };
 
-      let systemPrompt = systemPromptTemplate.replace(/\{\{([^{}]+)\}\}/g, (match, key) => {
-        return contextMapPropel[key] !== undefined ? contextMapPropel[key] : match;
-      });
+      let systemPrompt = replaceTemplateVars(systemPromptTemplate, contextMapPropel);
 
       systemPrompt = processPromptWithSettings(systemPrompt, 'single');
 

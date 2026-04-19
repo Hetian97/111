@@ -83,6 +83,32 @@ function getCurrencyForChat(chat) {
   return CURRENCY_MAP[chat.country] || CURRENCY_MAP['China'];
 }
 
+// 通过货币代码获取货币信息
+function getCurrencyObjByCode(code) {
+  if (!code) return CURRENCY_MAP['China'];
+  const upperCode = code.toUpperCase();
+  for (const key in CURRENCY_MAP) {
+    if (CURRENCY_MAP[key].code === upperCode) {
+      return CURRENCY_MAP[key];
+    }
+  }
+  return CURRENCY_MAP['China']; // 默认返回人民币
+}
+
+// 生成供AI参考的汇率上下文
+function getCurrencyExchangeContext() {
+  let context = "【可用货币与参考汇率】(换算为1元人民币所需金额)：\n";
+  const addedCodes = new Set();
+  for (const key in CURRENCY_MAP) {
+    const c = CURRENCY_MAP[key];
+    if (!addedCodes.has(c.code)) {
+      context += `- ${c.name} (${c.code}): 汇率 ≈ ${c.rate}\n`;
+      addedCodes.add(c.code);
+    }
+  }
+  return context;
+}
+
 // 获取角色的记忆上下文（自动判断记忆模式）
 function getMemoryContextForPrompt(chat, options = {}) {
   const { includeTimestamp = false } = options;

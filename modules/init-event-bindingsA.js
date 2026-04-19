@@ -2061,10 +2061,10 @@ window.initEventBindingsA = async function(state, db) {
 
       state.globalSettings.chatRenderWindow = parseInt(document.getElementById('chat-render-window-input').value) || 50;
       state.globalSettings.chatListRenderWindow = parseInt(document.getElementById('chat-list-render-window-input').value) || 30;
-      state.globalSettings.apiTemperature = parseFloat(document.getElementById('api-temperature-slider').value);
-            state.globalSettings.apiTopP = parseFloat(document.getElementById('api-top-p-slider').value);
-            state.globalSettings.apiPresencePenalty = parseFloat(document.getElementById('api-presence-penalty-slider').value);
-            state.globalSettings.apiFrequencyPenalty = parseFloat(document.getElementById('api-frequency-penalty-slider').value);
+      state.globalSettings.apiTemperature = parseFloat(document.getElementById('api-temperature-input').value);
+      state.globalSettings.apiTopP = parseFloat(document.getElementById('api-top-p-input').value);
+      state.globalSettings.apiPresencePenalty = parseFloat(document.getElementById('api-presence-penalty-input').value);
+      state.globalSettings.apiFrequencyPenalty = parseFloat(document.getElementById('api-frequency-penalty-input').value);
       
       // 方案4：保存API历史记录开关状态
       const apiHistorySwitch = document.getElementById('enable-api-history-switch');
@@ -2995,13 +2995,19 @@ window.initEventBindingsA = async function(state, db) {
       document.getElementById('export-character-full-btn').style.display = isGroup ? 'none' : 'block';
       document.getElementById('chat-name-input').value = chat.name;
 
-      // 加载角色国籍
+      // 加载角色国籍和动态货币开关
       const countrySelect = document.getElementById('character-country-select');
+      const dynamicCurrencyGroup = document.getElementById('dynamic-currency-transfer-group');
       if (!isGroup) {
         document.getElementById('character-country-group').style.display = 'block';
         countrySelect.value = chat.country || 'China';
+        if (dynamicCurrencyGroup) {
+          dynamicCurrencyGroup.style.display = 'flex';
+          document.getElementById('dynamic-currency-transfer-switch').checked = chat.settings.enableDynamicCurrency || false;
+        }
       } else {
         document.getElementById('character-country-group').style.display = 'none';
+        if (dynamicCurrencyGroup) dynamicCurrencyGroup.style.display = 'none';
       }
 
       document.getElementById('my-persona').value = chat.settings.myPersona;
@@ -3217,6 +3223,20 @@ window.initEventBindingsA = async function(state, db) {
         document.getElementById('chat-show-seconds-switch').checked = chat.settings.showSeconds !== undefined ? chat.settings.showSeconds : (state.globalSettings.showSeconds || false);
         document.getElementById('enable-tts-switch').checked = chat.settings.enableTts !== false;
         document.getElementById('ai-persona').value = chat.settings.aiPersona;
+        
+        // 动态年龄设置回显
+        document.getElementById('ai-dynamic-age-toggle').checked = chat.settings.enableDynamicAge || false;
+        document.getElementById('ai-birthday-input-group').style.display = chat.settings.enableDynamicAge ? 'block' : 'none';
+        
+        document.getElementById('ai-dynamic-age-toggle').addEventListener('change', (e) => {
+            document.getElementById('ai-birthday-input-group').style.display = e.target.checked ? 'block' : 'none';
+        });
+        
+        const birthday = chat.settings.aiBirthday || {};
+        document.getElementById('ai-birthday-year').value = birthday.year || '';
+        document.getElementById('ai-birthday-month').value = birthday.month || '';
+        document.getElementById('ai-birthday-day').value = birthday.day || '';
+        
         document.getElementById('ai-avatar-preview').src = chat.settings.aiAvatar || defaultAvatar;
         document.getElementById('my-nickname-input').value = chat.settings.myNickname || '我';
         document.getElementById('ai-action-cooldown-input').value = chat.settings.actionCooldownMinutes || 10;
@@ -3588,6 +3608,11 @@ window.initEventBindingsA = async function(state, db) {
       // 保存角色国籍
       const selectedCountry = document.getElementById('character-country-select').value;
       chat.country = selectedCountry;
+      
+      const dynamicCurrencySwitch = document.getElementById('dynamic-currency-transfer-switch');
+      if (dynamicCurrencySwitch) {
+        chat.settings.enableDynamicCurrency = dynamicCurrencySwitch.checked;
+      }
 
       const selectedThemeRadio = document.querySelector('input[name="theme-select"]:checked');
       chat.settings.theme = selectedThemeRadio ? selectedThemeRadio.value : 'default';
@@ -3776,6 +3801,18 @@ window.initEventBindingsA = async function(state, db) {
         if (!newOriginalName) return alert('对方本名不能为空！');
         chat.originalName = newOriginalName;
         chat.settings.aiPersona = document.getElementById('ai-persona').value;
+        
+        // 保存动态年龄设置
+        chat.settings.enableDynamicAge = document.getElementById('ai-dynamic-age-toggle').checked;
+        const bYear = parseInt(document.getElementById('ai-birthday-year').value);
+        const bMonth = parseInt(document.getElementById('ai-birthday-month').value);
+        const bDay = parseInt(document.getElementById('ai-birthday-day').value);
+        chat.settings.aiBirthday = {
+            year: isNaN(bYear) ? null : bYear,
+            month: isNaN(bMonth) ? null : bMonth,
+            day: isNaN(bDay) ? null : bDay
+        };
+        
         chat.settings.minimaxVoiceId = document.getElementById('ai-voice-id-input').value.trim();
 
         chat.settings.ttsLanguage = document.getElementById('ai-voice-lang-select').value;
