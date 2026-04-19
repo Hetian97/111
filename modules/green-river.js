@@ -61,7 +61,12 @@
     const listEl = document.getElementById('gr-book-list');
     listEl.innerHTML = '';
 
-    const stories = await db.grStories.orderBy('lastUpdated').reverse().toArray();
+    const allStories = await db.grStories.toArray();
+    const stories = allStories.sort((a, b) => {
+      const aTime = a.lastUpdated || 0;
+      const bTime = b.lastUpdated || 0;
+      return bTime - aTime;
+    });
     const authors = await db.grAuthors.toArray();
     const authorMap = new Map(authors.map(a => [a.id, a.name]));
 
