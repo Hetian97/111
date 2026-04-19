@@ -84,7 +84,7 @@
       const div = document.createElement('div');
       div.className = 'gr-book-card';
 
-      const wordCount = story.chapters.reduce((acc, ch) => acc + ch.content.length, 0);
+      const wordCount = story.chapters.reduce((acc, ch) => acc + (ch.content || '').length, 0);
 
       // 【核心逻辑修改】
       const isAdded = linkedIds.has(story.id);
@@ -1041,9 +1041,15 @@ ${charsContext}
       const readerComments = (result.readerComments && Array.isArray(result.readerComments))
         ? result.readerComments
         : [];
+        
+      const content = result.content;
+      if (!content || typeof content !== 'string' || content.trim().length < 50) {
+        throw new Error("AI未返回有效正文或内容过短，生成失败");
+      }
+
       const newChapter = {
         title: result.title || `第 ${story.chapters.length + 1} 章`,
-        content: result.content,
+        content: content,
         summary: result.summary,
         prevSummary: prevSummary,
         readerComments,

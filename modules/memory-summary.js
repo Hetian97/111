@@ -2435,27 +2435,38 @@ async function checkAndTriggerAutoSummary(chatId) {
   const chat = state.chats[chatId];
   if (!chat || !chat.settings.enableAutoMemory) return;
 
-  const lastSummaryTimestamp = chat.lastMemorySummaryTimestamp || 0;
-  const messagesSinceLastSummary = chat.history.filter(m => m.timestamp > lastSummaryTimestamp && !m.isHidden);
+  const memoryMode = chat.settings.memoryMode || 'diary';
 
-  if (messagesSinceLastSummary.length >= chat.settings.autoMemoryInterval) {
-    console.log(`达到自动总结阈值 (${messagesSinceLastSummary.length}/${chat.settings.autoMemoryInterval})，开始总结...`);
-    
-    const memoryMode = chat.settings.memoryMode || 'diary';
-    
-    if (memoryMode === 'vector' && window.vectorMemoryManager) {
-      // 向量记忆模式：只触发向量记忆总结
+  if (memoryMode === 'vector' && window.vectorMemoryManager) {
+    const vm = window.vectorMemoryManager.getVariableMemory(chat);
+    const lastIdx = vm.settings.lastExtractedMsgIndex !== undefined ? vm.settings.lastExtractedMsgIndex : -1;
+    const historyLen = chat.history ? chat.history.length : 0;
+    // 排除隐藏消息但包含内心独白（使用与 vector-memory 相同的过滤方式或简单使用总消息索引差）
+    const unextractedMessages = Math.max(0, historyLen - 1 - lastIdx);
+    const autoInterval = vm.settings.autoExtractionMsgInterval || 20;
+
+    if (unextractedMessages >= autoInterval) {
+      console.log(`[变量记忆] 达到自动提取阈值 (${unextractedMessages}/${autoInterval})，开始提取...`);
       await triggerVectorMemorySummary(chatId);
-    } else if (memoryMode === 'structured' && window.structuredMemoryManager) {
-      // 结构化模式：触发日记总结 + 结构化总结
-      await triggerAutoSummary(chatId);
-      await triggerStructuredMemorySummary(chatId);
-    } else {
-      // 日记模式（默认）：只触发日记总结
-      await triggerAutoSummary(chatId);
-      // 兼容旧的enableStructuredMemory开关
-      if (chat.settings.enableStructuredMemory && window.structuredMemoryManager) {
+    }
+  } else {
+    const lastSummaryTimestamp = chat.lastMemorySummaryTimestamp || 0;
+    const messagesSinceLastSummary = chat.history.filter(m => m.timestamp > lastSummaryTimestamp && !m.isHidden);
+
+    if (messagesSinceLastSummary.length >= chat.settings.autoMemoryInterval) {
+      console.log(`达到自动总结阈值 (${messagesSinceLastSummary.length}/${chat.settings.autoMemoryInterval})，开始总结...`);
+      
+      if (memoryMode === 'structured' && window.structuredMemoryManager) {
+        // 结构化模式：触发日记总结 + 结构化总结
+        await triggerAutoSummary(chatId);
         await triggerStructuredMemorySummary(chatId);
+      } else {
+        // 日记模式（默认）：只触发日记总结
+        await triggerAutoSummary(chatId);
+        // 兼容旧的enableStructuredMemory开关
+        if (chat.settings.enableStructuredMemory && window.structuredMemoryManager) {
+          await triggerStructuredMemorySummary(chatId);
+        }
       }
     }
   }
