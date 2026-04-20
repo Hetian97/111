@@ -2482,14 +2482,14 @@ async function cleanupRedundantData() {
   async function renderWorldBookScreen() {
     const tabsContainer = document.getElementById('world-book-tabs');
     const contentContainer = document.getElementById('world-book-content-container');
-    tabsContainer.innerHTML = '';
-    contentContainer.innerHTML = '';
-
 
     const [books, categories] = await Promise.all([
       db.worldBooks.toArray(),
       db.worldBookCategories.orderBy('name').toArray()
     ]);
+
+    tabsContainer.innerHTML = '';
+    contentContainer.innerHTML = '';
 
     state.worldBooks = books;
 
