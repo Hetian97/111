@@ -912,6 +912,7 @@ async function cleanupRedundantData() {
                     chat.history = [];
                     chat.heartfeltVoice = '...';
                     chat.randomJottings = '...';
+                    chat.customThoughts = {};
                     if (Array.isArray(chat.nameHistory)) {
                       chat.nameHistory = [];
                     }
@@ -957,6 +958,7 @@ async function cleanupRedundantData() {
                 chat.thoughtsHistory = [];
                 chat.heartfeltVoice = '...';
                 chat.randomJottings = '...';
+                chat.customThoughts = {};
                 await db.chats.put(chat);
               }
             }

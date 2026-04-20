@@ -89,6 +89,7 @@ window.initEventBindingsB = function(state, db) {
             // 角色状态
             heartfeltVoice: chat.heartfeltVoice,
             randomJottings: chat.randomJottings,
+            customThoughts: chat.customThoughts ? JSON.parse(JSON.stringify(chat.customThoughts)) : {},
             status: chat.status ? JSON.parse(JSON.stringify(chat.status)) : null
           }
         };
@@ -225,6 +226,7 @@ window.initEventBindingsB = function(state, db) {
         // 恢复角色状态
         chat.heartfeltVoice = archive.data.heartfeltVoice;
         chat.randomJottings = archive.data.randomJottings;
+        chat.customThoughts = archive.data.customThoughts ? JSON.parse(JSON.stringify(archive.data.customThoughts)) : {};
         chat.status = archive.data.status ? JSON.parse(JSON.stringify(archive.data.status)) : null;
 
         // 保存到数据库
@@ -794,6 +796,7 @@ window.initEventBindingsB = function(state, db) {
         chat.history = [];
         chat.heartfeltVoice = '...';
         chat.randomJottings = '...';
+        chat.customThoughts = {};
         // 重置角色状态为默认的"在线"
         if (!chat.isGroup && chat.status) {
           chat.status.text = '在线';

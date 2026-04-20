@@ -1652,10 +1652,22 @@
           if (!chat.isGroup) {
             if (msgData.heartfelt_voice) chat.heartfeltVoice = String(msgData.heartfelt_voice);
             if (msgData.random_jottings) chat.randomJottings = String(msgData.random_jottings);
+            
+            // 动态收集自定义心声变量 (导演模式)
+            if (!chat.customThoughts) {
+              chat.customThoughts = {};
+            }
+            for (const key in msgData) {
+              if (key !== 'type' && key !== 'heartfelt_voice' && key !== 'random_jottings') {
+                chat.customThoughts[key] = String(msgData[key]);
+              }
+            }
+            
             if (!Array.isArray(chat.thoughtsHistory)) chat.thoughtsHistory = [];
             chat.thoughtsHistory.push({
               heartfeltVoice: chat.heartfeltVoice,
               randomJottings: chat.randomJottings,
+              customThoughts: JSON.parse(JSON.stringify(chat.customThoughts)),
               timestamp: Date.now()
             });
             if (chat.thoughtsHistory.length > 50) chat.thoughtsHistory.shift();

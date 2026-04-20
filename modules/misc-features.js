@@ -1750,12 +1750,14 @@
 
       lastThought.heartfeltVoice = chat.heartfeltVoice;
       lastThought.randomJottings = chat.randomJottings;
+      // 保留 customThoughts
       lastThought.timestamp = Date.now();
     } else {
 
       chat.thoughtsHistory.push({
         heartfeltVoice: chat.heartfeltVoice,
         randomJottings: chat.randomJottings,
+        customThoughts: chat.customThoughts ? JSON.parse(JSON.stringify(chat.customThoughts)) : {},
         timestamp: Date.now()
       });
     }
@@ -1926,6 +1928,22 @@
     const renderedJottings = await applyRenderingRules(thought.randomJottings || '...', chatId);
 
 
+    let customThoughtsHtml = '';
+    if (thought.customThoughts && Object.keys(thought.customThoughts).length > 0) {
+      for (const [key, value] of Object.entries(thought.customThoughts)) {
+        const renderedCustom = await applyRenderingRules(value || '...', chatId);
+        customThoughtsHtml += `
+            <div class="custom-thought-item" style="margin-top: 10px;">
+                <div class="label" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    ${key}
+                </div>
+                <div class="text" style="font-size: 14px; line-height: 1.5; color: var(--text-color);">${renderedCustom}</div>
+            </div>
+        `;
+      }
+    }
+
     card.innerHTML = `
         <button class="thought-delete-btn" data-timestamp="${thought.timestamp}" title="删除此条记录">×</button>
         <div class="thought-header">${dateString}</div>
@@ -1944,6 +1962,7 @@
                 </div>
                 <div class="text">${renderedJottings}</div>
             </div>
+            ${customThoughtsHtml}
         </div>
     `;
     return card;
@@ -4422,6 +4441,7 @@ ${email.content}
           const newLatestThought = chat.thoughtsHistory[chat.thoughtsHistory.length - 1];
           chat.heartfeltVoice = newLatestThought.heartfeltVoice;
           chat.randomJottings = newLatestThought.randomJottings;
+          chat.customThoughts = newLatestThought.customThoughts ? JSON.parse(JSON.stringify(newLatestThought.customThoughts)) : {};
 
           const heartfeltVoiceEl = document.getElementById('profile-heartfelt-voice');
           const randomJottingsEl = document.getElementById('profile-random-jottings');
@@ -4432,6 +4452,7 @@ ${email.content}
         } else {
           chat.heartfeltVoice = '...';
           chat.randomJottings = '...';
+          chat.customThoughts = {};
 
           const heartfeltVoiceEl = document.getElementById('profile-heartfelt-voice');
           const randomJottingsEl = document.getElementById('profile-random-jottings');

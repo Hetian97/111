@@ -448,7 +448,17 @@
     // 2. 将 {{xxx}} 变量映射到 contextMap 真实数据
     return p.replace(/\{\{([^{}]+)\}\}/g, (match, key) => {
       const k = key.trim();
+      
       if (contextMap[k] !== undefined) return contextMap[k];
+      
+      // 支持自定义心声变量替换
+      const activeChatId = state.activeChatId;
+      if (activeChatId && state.chats[activeChatId]) {
+        const currentChat = state.chats[activeChatId];
+        if (currentChat.customThoughts && currentChat.customThoughts[k] !== undefined) {
+          return currentChat.customThoughts[k];
+        }
+      }
       
       // 模糊匹配兜底（防用户写错变量名）
       if (k === 'chat.originalName') return contextMap['chat.originalName'] !== undefined ? contextMap['chat.originalName'] : match;
@@ -4388,24 +4398,43 @@ ${getActiveThoughtsPrompt()}
               if (msgData.random_jottings) {
                 chat.randomJottings = String(msgData.random_jottings);
               }
+              
+              // 动态收集自定义心声变量
+              if (!chat.customThoughts) {
+                chat.customThoughts = {};
+              }
+              for (const key in msgData) {
+                if (key !== 'type' && key !== 'heartfelt_voice' && key !== 'random_jottings') {
+                  chat.customThoughts[key] = String(msgData[key]);
+                }
+              }
+
               if (!Array.isArray(chat.thoughtsHistory)) {
                 chat.thoughtsHistory = [];
               }
-              chat.thoughtsHistory.push({
+              
+              const currentThought = {
                 heartfeltVoice: chat.heartfeltVoice,
                 randomJottings: chat.randomJottings,
+                customThoughts: JSON.parse(JSON.stringify(chat.customThoughts)),
                 timestamp: Date.now()
-              });
+              };
+              
+              chat.thoughtsHistory.push(currentThought);
               if (chat.thoughtsHistory.length > 50) {
                 chat.thoughtsHistory.shift();
               }
 
-
-
-              const thoughtForMemory = `[这是你上一轮的内心独白和思考]
+              let thoughtForMemory = `[这是你上一轮的内心独白和思考]
 - 心声: ${chat.heartfeltVoice}
 - 散记: ${chat.randomJottings}`;
 
+              // 将自定义心声也加入记忆中
+              if (chat.customThoughts && Object.keys(chat.customThoughts).length > 0) {
+                for (const [key, value] of Object.entries(chat.customThoughts)) {
+                  thoughtForMemory += `\n- ${key}: ${value}`;
+                }
+              }
 
               const hiddenThoughtMessage = {
                 role: 'system',
@@ -4413,9 +4442,6 @@ ${getActiveThoughtsPrompt()}
                 timestamp: Date.now(),
                 isHidden: true
               };
-
-
-
 
             }
             continue;
@@ -6599,6 +6625,16 @@ ${linkedContents}
           if (!chat.isGroup) {
             if (msgData.heartfelt_voice) chat.heartfeltVoice = String(msgData.heartfelt_voice);
             if (msgData.random_jottings) chat.randomJottings = String(msgData.random_jottings);
+            
+            // 推进时也动态收集自定义心声变量
+            if (!chat.customThoughts) {
+              chat.customThoughts = {};
+            }
+            for (const key in msgData) {
+              if (key !== 'type' && key !== 'heartfelt_voice' && key !== 'random_jottings') {
+                chat.customThoughts[key] = String(msgData[key]);
+              }
+            }
           }
           continue;
         }

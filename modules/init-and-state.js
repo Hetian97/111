@@ -392,6 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (typeof chat.heartfeltVoice === 'undefined') chat.heartfeltVoice = '...';
         if (typeof chat.randomJottings === 'undefined') chat.randomJottings = '...';
+        if (typeof chat.customThoughts === 'undefined') chat.customThoughts = {};
         if (!Array.isArray(chat.thoughtsHistory)) {
           chat.thoughtsHistory = [];
         }
