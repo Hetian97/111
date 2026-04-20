@@ -338,6 +338,8 @@
            .list-container {
                padding: 20px;
                overflow-y: auto;
+               overscroll-behavior-y: contain;
+               -webkit-overflow-scrolling: touch;
                flex-grow: 1;
                display: flex;
                flex-direction: column;
@@ -419,6 +421,8 @@
            #world-book-list {
                flex-grow: 1;
                overflow-y: auto;
+               overscroll-behavior-y: contain;
+               -webkit-overflow-scrolling: touch;
                background-color: var(--secondary-bg);
                padding-top: 80px;
                margin-top: -80px;
