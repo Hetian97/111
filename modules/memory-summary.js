@@ -1080,7 +1080,7 @@ async function openVectorMemorySettings(chat, defaultTab = 'settings') {
 
 // ==================== 向量记忆自动总结 ====================
 // ===== 变量记忆提取核心逻辑（公共函数） =====
-async function executeVectorExtraction(chat, messages, updateTimestamp = false) {
+async function executeVectorExtraction(chat, messages, updateTimestamp = false, extractedEndIndex = null) {
   if (messages.length === 0) {
     showToast('没有可总结的消息', 'info');
     return;
@@ -1138,7 +1138,7 @@ async function executeVectorExtraction(chat, messages, updateTimestamp = false) 
   if (extracted.length > 0) {
     // 使用提取的消息段中最后一条消息的时间作为这段记忆的发生时间
     const defaultMemoryTime = dialogueTimeRange.end || Date.now();
-    const newIds = await window.vectorMemoryManager.mergeExtractedMemories(chat, extracted, defaultMemoryTime);
+    const newIds = await window.vectorMemoryManager.mergeExtractedMemories(chat, extracted, defaultMemoryTime, extractedEndIndex);
     if (updateTimestamp) {
       const vm = window.vectorMemoryManager.getVariableMemory(chat);
       // 基于最新架构：通过方法内部更新的 _tempLastMsgIndex 进行赋值，此处可以略过或者用以兜底
@@ -1276,7 +1276,8 @@ async function handleVectorNewMessagesSummary(chat) {
 
   showToast(`正在提取 ${newMessages.length} 条新消息...`, 'info');
   try {
-    await executeVectorExtraction(chat, newMessages, true);
+    const lastExtractedIndex = chat.history.length - 1;
+await executeVectorExtraction(chat, newMessages, true, lastExtractedIndex);
   } catch (error) {
     console.error('[变量记忆-新消息提取] 错误:', error);
     showToast('提取失败：' + error.message, 'error');
@@ -1351,7 +1352,7 @@ async function handleVectorRangeSummary(chat) {
 
       showToast(`正在提取第 ${start}-${end} 条消息...`, 'info');
       try {
-        await executeVectorExtraction(chat, validMessages, updateTimestamp);
+        await executeVectorExtraction(chat, validMessages, updateTimestamp, end);
       } catch (error) {
         console.error('[变量记忆-范围提取] 错误:', error);
         showToast('提取失败：' + error.message, 'error');
