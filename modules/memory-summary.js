@@ -982,21 +982,41 @@ async function openVectorMemorySettings(chat, defaultTab = 'settings') {
       if (group) group.style.display = periodicCb.checked ? 'block' : 'none';
     });
   }
-  const customPromptCb = panel.querySelector('#vm-custom-prompt');
+  const customPromptCb = panel.querySelector('#vm-use-custom-prompt');
   if (customPromptCb) {
-    customPromptCb.addEventListener('change', () => {
-      const field = panel.querySelector('#vm-custom-prompt-field');
-      if (field) field.style.display = customPromptCb.checked ? 'block' : 'none';
+      customPromptCb.addEventListener('change', () => {
+          const fieldsDiv = panel.querySelector('#vm-custom-prompt-fields');
+          if (fieldsDiv) fieldsDiv.style.display = customPromptCb.checked ? 'block' : 'none';
+          
+          // 如果开关被打开，且文本框为空，则填入默认提示词
+          if (customPromptCb.checked) {
+              const textarea = panel.querySelector('#vm-custom-prompt');
+              if (textarea && !textarea.value.trim()) {
+                  textarea.value = window.vectorMemoryManager.DEFAULT_EXTRACTION_PROMPT;
+              }
+          }
     });
-  }
+
+    // 初始化时根据当前状态显示
+    const fieldsDiv = panel.querySelector('#vm-custom-prompt-fields');
+    if (fieldsDiv) fieldsDiv.style.display = customPromptCb.checked ? 'block' : 'none';
+    
+    // 初始化时如果开关打开且文本框为空，也填入默认提示词
+    if (customPromptCb.checked) {
+        const textarea = panel.querySelector('#vm-custom-prompt');
+        if (textarea && !textarea.value.trim()) {
+            textarea.value = window.vectorMemoryManager.DEFAULT_EXTRACTION_PROMPT;
+        }
+    }
+}
 
   // 重置提示词按钮
   const resetPromptBtn = panel.querySelector('#vm-reset-prompt-btn');
   if (resetPromptBtn) {
     resetPromptBtn.addEventListener('click', () => {
-      const textarea = panel.querySelector('#vm-custom-prompt-text');
+      const textarea = panel.querySelector('#vm-custom-prompt');
       if (textarea) {
-        textarea.value = window.vectorMemoryManager.getDefaultExtractionPrompt();
+        textarea.value = window.vectorMemoryManager.DEFAULT_EXTRACTION_PROMPT;
         showToast('已重置为默认提示词', 'success');
       }
     });
